@@ -1,0 +1,14 @@
+.DS_Store
+.venv/
+.env
+__pycache__/
+*.pyc
+
+output/*
+!output/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+debug/*
+!debug/.gitkeep
