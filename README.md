@@ -63,3 +63,5 @@ BuymaFinder/
 ## 現在の段階
 
 プロジェクト基盤作成中です。商品取得処理は次の実装段階で追加します。
+
+Test: Codex repository connection
