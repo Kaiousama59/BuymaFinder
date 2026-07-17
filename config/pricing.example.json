@@ -1,0 +1,18 @@
+{
+  "exchange_rates": {
+    "EUR": null
+  },
+  "target_profit_margin": 0.10,
+  "exchange_rate_safety_margin": 0.03,
+  "international_shipping_jpy": null,
+  "domestic_shipping_jpy": null,
+  "packing_cost_jpy": null,
+  "buyma_fee_rate": null,
+  "estimated_import_cost_rates": {
+    "Clothing": null,
+    "Footwear": null,
+    "Accessories": null,
+    "Bags": null
+  },
+  "listing_price_rounding_increment_jpy": null
+}

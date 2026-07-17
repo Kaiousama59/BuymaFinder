@@ -27,6 +27,25 @@ PRODUCT_COLUMNS = (
     "image_urls",
     "in_stock",
     "collected_at",
+    "pricing_status",
+    "pricing_error",
+    "source_current_price",
+    "source_currency",
+    "exchange_rate",
+    "exchange_rate_safety_margin",
+    "adjusted_exchange_rate",
+    "purchase_cost_jpy",
+    "international_shipping_jpy",
+    "estimated_import_cost_jpy",
+    "domestic_shipping_jpy",
+    "packing_cost_jpy",
+    "pre_buyma_cost_jpy",
+    "buyma_fee_rate",
+    "buyma_fee_jpy",
+    "total_estimated_cost_jpy",
+    "suggested_listing_price_jpy",
+    "expected_profit_jpy",
+    "expected_profit_margin",
 )
 
 
@@ -44,6 +63,7 @@ def export_products_csv(products: Iterable[Product], path: Path) -> int:
 
 
 def _serialize_product(product: Product) -> dict[str, str]:
+    pricing = product.pricing
     return {
         "shop_code": _csv_safe(product.shop_code),
         "shop_name": _csv_safe(product.shop_name),
@@ -66,6 +86,25 @@ def _serialize_product(product: Product) -> dict[str, str]:
         "image_urls": json.dumps(product.image_urls, ensure_ascii=True, separators=(",", ":")),
         "in_stock": "" if product.in_stock is None else str(product.in_stock).lower(),
         "collected_at": product.collected_at.isoformat(),
+        "pricing_status": _csv_safe(pricing.pricing_status),
+        "pricing_error": _csv_safe(pricing.pricing_error),
+        "source_current_price": _format_decimal(pricing.source_current_price),
+        "source_currency": _csv_safe(pricing.source_currency),
+        "exchange_rate": _format_decimal(pricing.exchange_rate),
+        "exchange_rate_safety_margin": _format_decimal(pricing.exchange_rate_safety_margin),
+        "adjusted_exchange_rate": _format_decimal(pricing.adjusted_exchange_rate),
+        "purchase_cost_jpy": _format_decimal(pricing.purchase_cost_jpy),
+        "international_shipping_jpy": _format_decimal(pricing.international_shipping_jpy),
+        "estimated_import_cost_jpy": _format_decimal(pricing.estimated_import_cost_jpy),
+        "domestic_shipping_jpy": _format_decimal(pricing.domestic_shipping_jpy),
+        "packing_cost_jpy": _format_decimal(pricing.packing_cost_jpy),
+        "pre_buyma_cost_jpy": _format_decimal(pricing.pre_buyma_cost_jpy),
+        "buyma_fee_rate": _format_decimal(pricing.buyma_fee_rate),
+        "buyma_fee_jpy": _format_decimal(pricing.buyma_fee_jpy),
+        "total_estimated_cost_jpy": _format_decimal(pricing.total_estimated_cost_jpy),
+        "suggested_listing_price_jpy": _format_decimal(pricing.suggested_listing_price_jpy),
+        "expected_profit_jpy": _format_decimal(pricing.expected_profit_jpy),
+        "expected_profit_margin": _format_decimal(pricing.expected_profit_margin),
     }
 
 

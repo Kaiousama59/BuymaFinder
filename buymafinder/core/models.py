@@ -5,6 +5,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
+from buymafinder.core.pricing_models import PricingResult
+
 
 @dataclass(frozen=True, slots=True)
 class Source:
@@ -41,6 +43,9 @@ class Product:
     image_urls: list[str] = field(default_factory=list)
     in_stock: Optional[bool] = None
     collected_at: datetime = field(default_factory=datetime.now)
+    pricing: PricingResult = field(
+        default_factory=lambda: PricingResult.not_priced("not_requested", "", None, "")
+    )
 
     @property
     def current_price(self) -> Optional[Decimal]:

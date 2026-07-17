@@ -1,6 +1,7 @@
 .DS_Store
 .venv/
 .env
+config/pricing.json
 __pycache__/
 *.pyc
 

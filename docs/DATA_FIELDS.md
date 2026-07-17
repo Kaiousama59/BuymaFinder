@@ -37,17 +37,33 @@
 
 | Field | Type | Meaning |
 |---|---|---|
-| exchange_rate | decimal | Currency conversion rate |
-| purchase_jpy | integer | Purchase cost converted to JPY |
-| overseas_shipping_jpy | integer | International shipping estimate |
-| duty_tax_jpy | integer | Duty/tax estimate |
-| domestic_shipping_jpy | integer | Domestic shipping estimate |
-| packing_jpy | integer | Packing cost |
-| buyma_fee_jpy | integer | BUYMA fee estimate |
-| total_cost_jpy | integer | Total estimated cost |
-| sale_price_jpy | integer | Suggested listing price |
-| expected_profit_jpy | integer | Expected profit |
-| expected_margin | decimal | Profit divided by sale price |
+| pricing_status | string | `priced` or the reason pricing was skipped |
+| pricing_error | string | Concise error explaining skipped pricing |
+| source_current_price | decimal/null | Sale price when available, otherwise regular price |
+| source_currency | string | Source price ISO currency code |
+| exchange_rate | decimal/null | Configured source-currency-to-JPY conversion rate |
+| exchange_rate_safety_margin | decimal/null | Configured exchange-rate safety margin |
+| adjusted_exchange_rate | decimal/null | Exchange rate multiplied by one plus the safety margin |
+| purchase_cost_jpy | integer/null | Current source price converted with the adjusted exchange rate and rounded upward |
+| international_shipping_jpy | integer/null | Configured international shipping cost |
+| estimated_import_cost_jpy | integer/null | Estimated import cost calculated from purchase cost plus international shipping |
+| domestic_shipping_jpy | integer/null | Configured domestic shipping cost |
+| packing_cost_jpy | integer/null | Configured packing cost |
+| pre_buyma_cost_jpy | integer/null | Purchase, shipping, import, domestic shipping, and packing costs |
+| buyma_fee_rate | decimal/null | Configured BUYMA fee rate |
+| buyma_fee_jpy | integer/null | BUYMA fee calculated from the suggested listing price |
+| total_estimated_cost_jpy | integer/null | Pre-BUYMA cost plus BUYMA fee |
+| suggested_listing_price_jpy | integer/null | Suggested listing price rounded upward to the configured increment |
+| expected_profit_jpy | integer/null | Suggested listing price minus total estimated cost |
+| expected_profit_margin | decimal/null | Expected profit divided by suggested listing price |
+
+The estimated import cost taxable base is the upward-rounded purchase cost in JPY plus the configured international shipping cost. The configured category rate is applied to that base and rounded upward to the nearest whole JPY.
+
+## Pricing configuration
+
+`config/pricing.example.json` lists every supported key. Copy it to `config/pricing.json` manually, then replace every `null` value with a verified production value. `exchange_rates` maps each supported source currency to its JPY exchange rate. `target_profit_margin` and `exchange_rate_safety_margin` are the confirmed business settings. `international_shipping_jpy`, `domestic_shipping_jpy`, and `packing_cost_jpy` are fixed JPY costs. `buyma_fee_rate` is charged against the listing price, and `listing_price_rounding_increment_jpy` controls upward listing-price rounding. `exchange_rates` currently supports only `EUR`. All percentage values must be between zero inclusive and one exclusive, and `buyma_fee_rate + target_profit_margin` must be less than one. Fixed JPY costs must be zero or greater, while `listing_price_rounding_increment_jpy` must be a positive integer.
+
+`estimated_import_cost_rates` uses normalized source category names. Its keys must be `Clothing`, `Footwear`, `Accessories`, and `Bags` for the configured sources. A missing category rate skips pricing only for products in that category.
 
 ## Change event
 

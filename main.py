@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright
 from buymafinder.core.source_loader import load_enabled_sources
 from buymafinder.services.collector import collect_products
 from buymafinder.services.csv_exporter import export_products_csv
+from buymafinder.services.pricing import apply_pricing
 from buymafinder.shops.eleonora import EleonoraAdapter
 
 
@@ -41,6 +42,7 @@ def main() -> int:
         logging.error("No products were collected; preserving any existing CSV export.")
         return 1
 
+    apply_pricing(products, Path("config/pricing.json"), [source.category for source in sources])
     row_count = export_products_csv(products, Path("output/eleonora_products.csv"))
     logging.info("Exported %s products to output/eleonora_products.csv", row_count)
     return 0

@@ -63,3 +63,13 @@ BuymaFinder/
 ## 現在の段階
 
 プロジェクト基盤作成中です。商品取得処理は次の実装段階で追加します。
+
+## Pricing configuration
+
+Pricing is disabled until explicit production values are supplied. Create a local configuration file manually:
+
+```bash
+cp config/pricing.example.json config/pricing.json
+```
+
+`config/pricing.json` is ignored by Git and must contain verified exchange, shipping, fee, import-cost-rate, and rounding values. The engine never invents missing monetary values.
