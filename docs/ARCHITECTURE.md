@@ -62,4 +62,4 @@ Generated artifacts. Keep only `.gitkeep` files in Git.
 
 ## Initial milestone
 
-The first milestone is not full automation. It is a reliable Eleonora Bonucci scan that returns up to 20 products per registered category and exports verifiable product URLs and prices.
+The first milestone is not full automation. It is a reliable Eleonora Bonucci scan that returns up to 5 products total across enabled categories and exports normalized product data to CSV.
