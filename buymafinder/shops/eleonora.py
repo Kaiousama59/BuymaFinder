@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -8,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urljoin, urlsplit
 
 from buymafinder.core.debug import save_empty_category_evidence
 from buymafinder.core.models import Product, SizeStock, Source
@@ -18,6 +19,7 @@ from buymafinder.shops.base import ShopAdapter
 
 PRODUCT_PATH = re.compile(r"^/en/[^/]+/(?:women|men)/.+/\d+/?$")
 PRICE_NUMBER = re.compile(r"[-+]?\d[\d.,\s]*")
+_LOGGER = logging.getLogger(__name__)
 
 
 def normalize_whitespace(value: str) -> str:
@@ -59,6 +61,37 @@ def parse_product_links(html: str, base_url: str) -> list[str]:
         for href in parser.links
         if PRODUCT_PATH.match(href.split("?", 1)[0])
     )
+
+
+def parse_next_page_url(html: str, current_url: str) -> str | None:
+    """Return the absolute URL of the next category page, or ``None`` on the last page.
+
+    Eleonora paginates category listings with ``?start=N`` links that also carry a
+    ``f=`` filter-state parameter. The next-page link is returned verbatim so the
+    filter state is preserved during navigation.
+    """
+    current = urlsplit(current_url)
+    current_query = dict(parse_qsl(current.query, keep_blank_values=True))
+    try:
+        current_start = int(current_query.get("start", "1"))
+    except ValueError:
+        current_start = 1
+
+    parser = _EleonoraHTMLParser()
+    parser.feed(html)
+    for href in parser.links:
+        absolute = urljoin(current_url, href)
+        candidate = urlsplit(absolute)
+        if candidate.path.rstrip("/") != current.path.rstrip("/"):
+            continue
+        candidate_query = dict(parse_qsl(candidate.query, keep_blank_values=True))
+        try:
+            candidate_start = int(candidate_query.get("start", ""))
+        except ValueError:
+            continue
+        if candidate_start == current_start + 1:
+            return absolute
+    return None
 
 
 def parse_product_detail_html(
@@ -136,12 +169,39 @@ class EleonoraAdapter(ShopAdapter):
 
     code = "eleonora"
 
+    def __init__(self, max_pages_per_source: int = 10, max_links_per_source: int | None = None) -> None:
+        if max_pages_per_source < 1:
+            raise ValueError("Maximum pages per source must be at least one.")
+        if max_links_per_source is not None and max_links_per_source < 1:
+            raise ValueError("Maximum links per source must be at least one when set.")
+        self.max_pages_per_source = max_pages_per_source
+        self.max_links_per_source = max_links_per_source
+
     def collect_product_links(self, source: Source, browser: Any) -> Iterable[str]:
         page = browser.new_page()
         try:
             self._navigate(page, source.list_url)
-            page.locator(".product.sf-dress").first.wait_for(state="attached", timeout=20_000)
-            product_links = parse_product_links(page.content(), page.url)
+            product_links: list[str] = []
+            for page_number in range(1, self.max_pages_per_source + 1):
+                try:
+                    page.locator(".product.sf-dress").first.wait_for(state="attached", timeout=20_000)
+                except Exception:
+                    if page_number == 1:
+                        raise
+                    break
+                html = page.content()
+                product_links.extend(parse_product_links(html, page.url))
+                if self.max_links_per_source is not None and len(product_links) >= self.max_links_per_source:
+                    break
+                if page_number == self.max_pages_per_source:
+                    break
+                next_page_url = parse_next_page_url(html, page.url)
+                if next_page_url is None:
+                    break
+                self._navigate(page, next_page_url)
+            product_links = unique_normalized_urls(product_links)
+            if self.max_links_per_source is not None:
+                product_links = product_links[: self.max_links_per_source]
             if not product_links:
                 save_empty_category_evidence(page, source)
             return product_links
@@ -157,11 +217,29 @@ class EleonoraAdapter(ShopAdapter):
         finally:
             page.close()
 
+    NAVIGATION_TIMEOUT_MS = 60_000
+    NAVIGATION_ATTEMPTS = 2
+
     @staticmethod
     def _navigate(page: Any, url: str) -> None:
-        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_load_state("domcontentloaded")
-        EleonoraAdapter._dismiss_privacy_dialog(page)
+        last_error: Exception | None = None
+        for attempt in range(1, EleonoraAdapter.NAVIGATION_ATTEMPTS + 1):
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=EleonoraAdapter.NAVIGATION_TIMEOUT_MS)
+                page.wait_for_load_state("domcontentloaded")
+                EleonoraAdapter._dismiss_privacy_dialog(page)
+                return
+            except Exception as error:
+                last_error = error
+                if attempt < EleonoraAdapter.NAVIGATION_ATTEMPTS:
+                    _LOGGER.warning(
+                        "Navigation attempt %d/%d failed, retrying: %s",
+                        attempt,
+                        EleonoraAdapter.NAVIGATION_ATTEMPTS,
+                        url,
+                    )
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _dismiss_privacy_dialog(page: Any) -> None:

@@ -13,3 +13,9 @@ logs/*
 
 debug/*
 !debug/.gitkeep
+data/
+output/
+debug/
+venv/
+__pycache__/
+diagnose.py
