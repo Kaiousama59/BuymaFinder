@@ -164,8 +164,19 @@ def _select_brand(page: Page, brand: str) -> None:
     section = _section(page, "ブランド")
     field = section.locator("input").first
     field.fill(brand)
-    page.wait_for_timeout(700)
-    _safe_click(page, page.get_by_text(brand, exact=True).last)
+    page.wait_for_timeout(1200)
+    exact_matches = page.get_by_text(brand, exact=True)
+    for index in range(exact_matches.count()):
+        candidate = exact_matches.nth(index)
+        if candidate.is_visible():
+            _safe_click(page, candidate)
+            return
+    # BUYMA often renders the registered Japanese name together with the
+    # Latin brand name, so an exact text match is unavailable. The first
+    # autocomplete result is selected only after searching the full brand.
+    field.press("ArrowDown")
+    field.press("Enter")
+    page.wait_for_timeout(500)
 
 
 def _select_color(page: Page, family: str, name: str) -> None:
