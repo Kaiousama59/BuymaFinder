@@ -25,6 +25,7 @@ class ListingSettings:
     private_memo: str = ""
     size_notes: str = ""
     purchase_deadline_days: int = 90
+    buying_region: str = "ヨーロッパ"
     buying_country: str = "イタリア"
     shipping_prefecture: str = "神奈川県"
     size_variation: bool = True
@@ -51,7 +52,7 @@ class ListingSettings:
             invalid.append("quantity")
         if not (1 <= self.purchase_deadline_days <= 90):
             invalid.append("purchase_deadline_days")
-        if not self.buying_country.strip() or not self.shipping_prefecture.strip():
+        if not self.buying_region.strip() or not self.buying_country.strip() or not self.shipping_prefecture.strip():
             invalid.append("location")
         if invalid:
             raise ValueError(f"Invalid listing settings: {', '.join(sorted(set(invalid)))}")

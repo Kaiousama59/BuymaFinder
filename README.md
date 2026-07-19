@@ -110,3 +110,6 @@ Bonucci product page and verifies every size. Available sizes are marked as
 `買付可`, sold-out sizes as `買付不可`, purchasable quantity is set to 1 when at
 least one size is available, and on-hand stock remains 0. If live stock cannot be
 verified, the run stops without saving the draft.
+
+Overseas buying locations are selected as a two-level path. The current AMI
+PARIS package uses `ヨーロッパ` followed by `イタリア`.

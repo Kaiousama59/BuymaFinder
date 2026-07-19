@@ -63,3 +63,11 @@ def test_listing_settings_rejects_invalid_values() -> None:
 def test_listing_settings_rejects_deadline_over_buyma_limit() -> None:
     with pytest.raises(ValueError, match="purchase_deadline_days"):
         ListingSettings("title", "description", ["a"], "white", "white", 1, 0, "shipping", 14, 21, purchase_deadline_days=91)
+
+
+def test_listing_settings_requires_buying_region() -> None:
+    with pytest.raises(ValueError, match="location"):
+        ListingSettings(
+            "title", "description", ["a"], "white", "white", 1, 0, "shipping", 14, 21,
+            buying_region="",
+        )

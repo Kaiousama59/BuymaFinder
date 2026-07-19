@@ -343,6 +343,7 @@ def _reference_size_label(source_size: str) -> str:
 def _fill_purchase_and_price(page: Page, payload: dict) -> None:
     settings = payload["settings"]
     _check_label(page, "海外" if settings["purchasing_location"] == "overseas" else "国内", occurrence=0)
+    _select_location_value(page, "買付地", settings.get("buying_region", "ヨーロッパ"))
     _select_location_value(page, "買付地", settings.get("buying_country", "イタリア"))
     _fill_near(page, "買付先ショップ名", "input", payload["supplier"][:30], required=False)
     _check_label(page, "国内" if settings["shipping_location"] == "domestic" else "海外", occurrence=-1)

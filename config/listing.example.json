@@ -15,6 +15,7 @@
   "purchasable_quantity": 1,
   "on_hand_quantity": 0,
   "purchase_deadline_days": 90,
+  "buying_region": "ヨーロッパ",
   "buying_country": "イタリア",
   "shipping_prefecture": "神奈川県",
   "size_variation": true,
