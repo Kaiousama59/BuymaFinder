@@ -44,6 +44,29 @@ def discover_batch_items(root: Path) -> list[BatchItem]:
     return items
 
 
+def discover_queued_batch_items(path: Path) -> list[BatchItem]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        packages = payload["packages"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise BuymaDraftError(f"Cannot read prepared package queue: {path}") from error
+    if not isinstance(packages, list) or not packages or any(not isinstance(item, str) for item in packages):
+        raise BuymaDraftError(f"Invalid prepared package queue: {path}")
+    items: list[BatchItem] = []
+    seen: set[str] = set()
+    for folder_name in packages:
+        folder = Path(folder_name).expanduser()
+        payload = load_listing_package(folder)
+        source_url = str(payload["source_url"]).strip()
+        sku = str(payload["sku"]).strip()
+        key = listing_key(source_url, sku)
+        if key in seen:
+            raise BuymaDraftError(f"Duplicate queued listing package for {source_url} ({sku})")
+        seen.add(key)
+        items.append(BatchItem(folder, key, source_url, str(payload["brand"]).strip(), sku))
+    return items
+
+
 def listing_key(source_url: str, sku: str) -> str:
     identity = f"{source_url.strip()}\n{sku.strip()}".encode("utf-8")
     return hashlib.sha256(identity).hexdigest()
