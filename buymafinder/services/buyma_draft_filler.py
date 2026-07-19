@@ -49,6 +49,7 @@ def fill_buyma_draft(
     payload = load_listing_package(package_folder)
     settings = payload["settings"]
     assert_safe_buyma_page(page)
+    _dismiss_blocking_overlays(page)
 
     images = [str((package_folder / name).resolve()) for name in payload["image_files"]]
     _upload_images(page, images)
@@ -122,7 +123,7 @@ def _select_category(page: Page, path: list[str]) -> None:
         if control.evaluate("element => element.tagName") == "SELECT":
             control.select_option(label=value)
         else:
-            control.click()
+            _safe_click(page, control)
             page.get_by_text(value, exact=True).last.click()
 
 
@@ -131,7 +132,7 @@ def _select_brand(page: Page, brand: str) -> None:
     field = section.locator("input").first
     field.fill(brand)
     page.wait_for_timeout(700)
-    page.get_by_text(brand, exact=True).last.click()
+    _safe_click(page, page.get_by_text(brand, exact=True).last)
 
 
 def _select_color(page: Page, family: str, name: str) -> None:
@@ -144,7 +145,7 @@ def _select_color(page: Page, family: str, name: str) -> None:
     if control.evaluate("element => element.tagName") == "SELECT":
         control.select_option(label=family)
     else:
-        control.click()
+        _safe_click(page, control)
         page.get_by_text(family, exact=True).last.click()
     if name:
         text_inputs = section.locator("input[type='text']")
@@ -204,4 +205,50 @@ def _check_label(page: Page, label: str, occurrence: int) -> None:
     if matches.count() == 0:
         raise BuymaDraftError(f"BUYMA option was not found: {label}")
     target = matches.nth(occurrence if occurrence >= 0 else matches.count() - 1)
-    target.click()
+    _safe_click(page, target)
+
+
+def _safe_click(page: Page, locator: Locator) -> None:
+    """Click after closing BUYMA's optional guided-tour overlay."""
+    _dismiss_blocking_overlays(page)
+    try:
+        locator.click(timeout=10_000)
+    except PlaywrightTimeoutError as error:
+        if page.locator("#driver-page-overlay").count() == 0:
+            raise
+        _dismiss_blocking_overlays(page, force=True)
+        try:
+            locator.click(timeout=10_000)
+        except PlaywrightTimeoutError as retry_error:
+            raise BuymaDraftError("BUYMA field remained blocked after closing the guided tour") from retry_error
+
+
+def _dismiss_blocking_overlays(page: Page, *, force: bool = False) -> None:
+    overlay = page.locator("#driver-page-overlay")
+    if overlay.count() == 0:
+        return
+    page.keyboard.press("Escape")
+    close_selectors = (
+        ".driver-popover-close-btn",
+        ".driver-close-btn",
+        "button:has-text('スキップ')",
+        "button:has-text('閉じる')",
+    )
+    for selector in close_selectors:
+        button = page.locator(selector)
+        if button.count() and button.first.is_visible():
+            button.first.click(force=True)
+            page.wait_for_timeout(300)
+            break
+    if overlay.count() and overlay.first.is_visible():
+        # This is only BUYMA's guided-tour layer, not an authentication or
+        # security control. Removing it restores the underlying form.
+        page.evaluate(
+            """() => {
+                document.querySelector('#driver-page-overlay')?.remove();
+                document.querySelectorAll('.driver-popover, .driver-popover-wrapper').forEach(node => node.remove());
+                document.documentElement.style.overflow = '';
+                document.body.style.overflow = '';
+            }"""
+        )
+        page.wait_for_timeout(200)
