@@ -446,6 +446,14 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
     if calendar is None:
         raise BuymaDraftError("BUYMA purchase-deadline calendar did not appear")
 
+    exact_date = page.locator(
+        f'.react-datepicker__day[aria-label^="Choose {deadline.year}年{deadline.month}月{deadline.day}日"]'
+    )
+    if exact_date.count() and exact_date.first.is_visible():
+        _safe_click(page, exact_date.first)
+        page.wait_for_timeout(300)
+        return
+
     next_selectors = (
         "button[aria-label*='次']",
         "button[aria-label*='Next' i]",
@@ -501,36 +509,14 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
 
 
 def _fill_supplier_memo(page: Page, supplier: str, source_url: str) -> None:
-    button = page.get_by_text("買付先メモを設定", exact=True)
-    if button.count() == 0:
-        raise BuymaDraftError("BUYMA supplier-memo button did not appear")
-    _safe_click(page, button.first)
-    page.wait_for_timeout(400)
-    dialog = page.get_by_role("dialog")
-    if dialog.count() == 0:
-        dialog = page.locator(".modal:visible, [class*='modal']:visible")
-    try:
-        dialog.last.wait_for(state="visible", timeout=5_000)
-    except PlaywrightTimeoutError as error:
-        raise BuymaDraftError("BUYMA supplier-memo dialog did not appear") from error
-    modal = dialog.last
-    memo_fields = modal.locator("textarea:visible, input[type='text']:visible")
-    link_fields = modal.locator("input[type='url']:visible, input[placeholder*='URL' i]:visible, input[placeholder*='リンク']:visible")
-    if memo_fields.count() == 0:
-        raise BuymaDraftError("BUYMA supplier-memo text field did not appear")
-    memo_fields.first.fill(f"仕入先サイト: {supplier}")
-    if link_fields.count():
-        link_fields.first.fill(source_url)
-    elif memo_fields.count() > 1:
-        memo_fields.nth(1).fill(source_url)
-    else:
-        raise BuymaDraftError("BUYMA supplier-memo link field did not appear")
-    save = modal.get_by_role("button", name="設定する", exact=True)
-    if save.count() == 0:
-        save = modal.get_by_role("button", name="保存", exact=True)
-    if save.count() == 0:
-        raise BuymaDraftError("BUYMA supplier-memo save button did not appear")
-    _safe_click(page, save.first)
+    section = _section(page, "買付先メモ")
+    fields = section.locator("input[type='text']:visible")
+    if fields.count() < 2:
+        raise BuymaDraftError("BUYMA supplier-memo name and URL fields did not appear")
+    fields.nth(0).fill(supplier)
+    fields.nth(1).fill(source_url)
+    if fields.count() > 2:
+        fields.nth(2).fill("仕入先の商品ページ")
 
 
 def _fill_size_inventory(
