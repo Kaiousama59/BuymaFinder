@@ -2,6 +2,7 @@
 .venv/
 .env
 config/pricing.json
+config/listing.json
 __pycache__/
 *.pyc
 

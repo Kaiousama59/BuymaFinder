@@ -73,3 +73,19 @@ cp config/pricing.example.json config/pricing.json
 ```
 
 `config/pricing.json` is ignored by Git and must contain verified exchange, shipping, fee, import-cost-rate, and rounding values. The engine never invents missing monetary values.
+
+## Prepare one reviewed BUYMA draft package
+
+This step does not log in to BUYMA or publish anything. Copy and review the
+product-specific settings, then create a folder containing `listing_data.json`
+and the product images:
+
+```bash
+cp config/listing.example.json config/listing.json
+python prepare_listing.py \
+  --product-url "https://eleonorabonucci.com/en/ami/women/clothing/tops/424047"
+```
+
+Output defaults to `~/Desktop/BUYMA/ListingImages/<supplier>/<brand>/<sku>/`.
+Downloads are retried, query-string duplicates and images belonging to another
+product are removed, and a different existing file is never overwritten.
