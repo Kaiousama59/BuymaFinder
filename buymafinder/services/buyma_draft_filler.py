@@ -139,12 +139,11 @@ def _wait_for_combobox(page: Page, section: Locator, index: int, value: str) -> 
 
 
 def _wait_for_react_option(page: Page, value: str) -> Locator:
-    menu_options = page.locator(".Select-menu-outer .Select-option, [role='option']")
     for _ in range(40):
-        matches = menu_options.filter(has_text=value)
+        matches = page.get_by_text(value, exact=True)
         for index in range(matches.count()):
             candidate = matches.nth(index)
-            if candidate.is_visible() and candidate.inner_text().strip() == value:
+            if candidate.is_visible():
                 return candidate
         page.wait_for_timeout(250)
     raise BuymaDraftError(f"BUYMA category option did not appear: {value}")
