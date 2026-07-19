@@ -1,0 +1,14 @@
+{
+  "preferred_brands": [
+    "MAISON MARGIELA",
+    "AMI PARIS",
+    "BALENCIAGA",
+    "RICK OWENS",
+    "ZIMMERMANN"
+  ],
+  "max_candidates": 20,
+  "minimum_images": 2,
+  "require_description": true,
+  "require_sizes": true,
+  "maximum_source_price": null
+}

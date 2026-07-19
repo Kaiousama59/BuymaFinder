@@ -3,6 +3,7 @@
 .env
 config/pricing.json
 config/listing.json
+config/candidates.json
 __pycache__/
 *.pyc
 

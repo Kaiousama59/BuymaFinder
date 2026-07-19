@@ -132,3 +132,19 @@ records completed products in `data/buyma_batch_progress.json`. If one product
 fails, the batch stops immediately. Rerunning the command skips recorded
 products and resumes with the next package. It never clicks a public listing or
 confirmation button.
+
+## Select products from preferred brands
+
+Candidate selection is separate from draft preparation and never invents profit.
+Copy and review the explicit brand preferences, then create a CSV review queue:
+
+```bash
+cp config/candidates.example.json config/candidates.json
+python select_listing_candidates.py \
+  --products-csv output/eleonora_products.csv
+```
+
+Only in-stock products with the configured minimum images, a description, and
+an available size are included. The output `output/listing_candidates.csv`
+starts with a blank `approved` field and `review_required` status. Brand order
+comes only from the local configuration and can be updated as demand changes.

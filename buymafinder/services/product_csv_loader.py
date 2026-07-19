@@ -19,6 +19,11 @@ def load_product_by_url(path: Path, product_url: str) -> Product:
     raise ValueError(f"Product URL was not found in {path}: {product_url}")
 
 
+def load_products(path: Path) -> list[Product]:
+    with path.open(newline="", encoding="utf-8-sig") as input_file:
+        return [_product_from_row(row) for row in csv.DictReader(input_file)]
+
+
 def _product_from_row(row: dict[str, str]) -> Product:
     sizes = json.loads(row.get("sizes") or "[]")
     return Product(
