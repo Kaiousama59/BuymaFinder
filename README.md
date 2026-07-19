@@ -161,3 +161,35 @@ estimated costs, expected profit, and margin. Brand order
 comes only from the local configuration and can be updated as demand changes.
 Products already present under `~/Desktop/BUYMA/ListingImages` are excluded by
 normalized source URL and SKU to prevent duplicate drafts.
+
+## Prepare and save an approved candidate batch
+
+After reviewing `output/listing_candidates.csv`, either mark individual rows
+`approved=yes`, or explicitly approve the current complete queue with
+`--approve-all`. Each product receives its own title, source-based description,
+BUYMA category, verified candidate price, sizes, memos, and image folder. Missing
+category rules stop preparation instead of guessing. Missing source color remains
+`色指定なし` for manual review.
+
+```bash
+python prepare_listing_candidates.py --approve-all
+```
+
+The command writes only the newly prepared package paths to
+`output/prepared_candidate_queue.json`. Save those packages as BUYMA drafts with:
+
+```bash
+python fill_buyma_drafts.py \
+  "$HOME/Desktop/BUYMA/ListingImages" \
+  --queue output/prepared_candidate_queue.json \
+  --limit 20 \
+  --save-drafts
+```
+
+The batch refreshes live Eleonora stock before every draft, stops on the first
+failure, and resumes from `data/buyma_batch_progress.json`. It never publishes a
+listing. Candidate packages select a saved `日本郵便 - ゆうパック` row by both
+method name and buyer-visible shipping price: JPY 300 for lightweight clothing,
+JPY 800 for jackets and dresses, and JPY 950 for coats, trenches, and leather
+outerwear. Add all three saved shipping rows in BUYMA before running the batch.
+The command pauses three seconds between drafts.
