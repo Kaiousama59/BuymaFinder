@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -576,36 +577,53 @@ def _fill_size_inventory(
 
 def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = None) -> None:
     section = _section(page, "配送方法")
-    option = section.get_by_text(method, exact=True)
-    if option.count() == 0:
-        raise BuymaDraftError(
-            f"Saved BUYMA shipping method was not found: {method}. Add it once in BUYMA and run again."
-        )
-    row: Locator | None = None
-    for index in range(option.count()):
-        candidate = option.nth(index).locator(
-            "xpath=ancestor::*[self::tr or self::div][.//input[@type='checkbox']][1]"
-        )
-        if candidate.count() and (
-            buyer_shipping_jpy is None or _contains_yen_price(candidate.inner_text(), buyer_shipping_jpy)
-        ):
-            row = candidate
-            break
-    if row is None:
+    checkboxes = section.locator("input[type='checkbox']")
+    target: Locator | None = None
+    shortest_matching_container: int | None = None
+    for checkbox_index in range(checkboxes.count()):
+        checkbox = checkboxes.nth(checkbox_index)
+        ancestors = checkbox.locator("xpath=ancestor::*[self::tr or self::div]")
+        for ancestor_index in range(ancestors.count()):
+            text = ancestors.nth(ancestor_index).inner_text()
+            if not _shipping_method_matches(text, method):
+                continue
+            if buyer_shipping_jpy is not None and not _contains_yen_price(text, buyer_shipping_jpy):
+                continue
+            container_length = len(text)
+            if shortest_matching_container is None or container_length < shortest_matching_container:
+                target = checkbox
+                shortest_matching_container = container_length
+    if target is None:
         price = "" if buyer_shipping_jpy is None else f" at ¥{buyer_shipping_jpy}"
         raise BuymaDraftError(f"Saved BUYMA shipping method was not found: {method}{price}")
-    checkbox = row.locator("input[type='checkbox']")
-    if checkbox.count():
-        target = checkbox.first
-        if not target.is_checked():
-            if target.is_visible():
-                target.check()
-            else:
-                target.evaluate("element => element.click()")
-        if not target.is_checked():
-            raise BuymaDraftError(f"BUYMA shipping method could not be selected: {method}")
-    else:
-        option.first.click()
+    if not target.is_checked():
+        if target.is_visible():
+            target.check()
+        else:
+            target.evaluate("element => element.click()")
+    if not target.is_checked():
+        raise BuymaDraftError(f"BUYMA shipping method could not be selected: {method}")
+
+
+def _shipping_method_matches(display_text: str, configured_method: str) -> bool:
+    displayed = _normalized_shipping_text(display_text)
+    configured = _normalized_shipping_text(configured_method)
+    if configured in displayed:
+        return True
+    if "ゆうパケット" in configured:
+        return "ゆうパケット" in displayed
+    if "ゆうパック" in configured:
+        if "ゆうパック" not in displayed:
+            return False
+        for size in ("60サイズ", "80サイズ", "100サイズ", "120サイズ"):
+            if size in configured:
+                return size in displayed
+    return False
+
+
+def _normalized_shipping_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text)
+    return "".join(normalized.split()).replace("−", "-").replace("–", "-").replace("—", "-")
 
 
 def _contains_yen_price(text: str, amount: int) -> bool:
