@@ -239,7 +239,14 @@ def _select_shipping(page: Page, method: str) -> None:
     row = option.first.locator("xpath=ancestor::*[self::tr or self::div][.//input[@type='checkbox']][1]")
     checkbox = row.locator("input[type='checkbox']")
     if checkbox.count():
-        checkbox.first.check()
+        target = checkbox.first
+        if not target.is_checked():
+            if target.is_visible():
+                target.check()
+            else:
+                target.evaluate("element => element.click()")
+        if not target.is_checked():
+            raise BuymaDraftError(f"BUYMA shipping method could not be selected: {method}")
     else:
         option.first.click()
 
