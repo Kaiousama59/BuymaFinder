@@ -124,7 +124,7 @@ def _select_category(page: Page, path: list[str]) -> None:
             control.select_option(label=value)
         else:
             _safe_click(page, control)
-            page.get_by_text(value, exact=True).last.click()
+            _safe_click(page, page.get_by_text(value, exact=True).last)
 
 
 def _select_brand(page: Page, brand: str) -> None:
@@ -146,7 +146,7 @@ def _select_color(page: Page, family: str, name: str) -> None:
         control.select_option(label=family)
     else:
         _safe_click(page, control)
-        page.get_by_text(family, exact=True).last.click()
+        _safe_click(page, page.get_by_text(family, exact=True).last)
     if name:
         text_inputs = section.locator("input[type='text']")
         if text_inputs.count():
@@ -209,18 +209,17 @@ def _check_label(page: Page, label: str, occurrence: int) -> None:
 
 
 def _safe_click(page: Page, locator: Locator) -> None:
-    """Click after closing BUYMA's optional guided-tour overlay."""
+    """Click a known form control despite BUYMA's decorative inner layers."""
     _dismiss_blocking_overlays(page)
     try:
-        locator.click(timeout=10_000)
-    except PlaywrightTimeoutError as error:
-        if page.locator("#driver-page-overlay").count() == 0:
-            raise
+        locator.click(timeout=3_000)
+    except PlaywrightTimeoutError:
         _dismiss_blocking_overlays(page, force=True)
         try:
-            locator.click(timeout=10_000)
+            locator.scroll_into_view_if_needed(timeout=3_000)
+            locator.click(timeout=3_000, force=True)
         except PlaywrightTimeoutError as retry_error:
-            raise BuymaDraftError("BUYMA field remained blocked after closing the guided tour") from retry_error
+            raise BuymaDraftError("BUYMA form control remained blocked after a targeted retry") from retry_error
 
 
 def _dismiss_blocking_overlays(page: Page, *, force: bool = False) -> None:
