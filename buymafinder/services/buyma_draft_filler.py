@@ -121,7 +121,7 @@ def _select_category(page: Page, path: list[str]) -> None:
         if control.evaluate("element => element.tagName") == "SELECT":
             control.select_option(label=value)
         else:
-            _safe_click(page, control)
+            _open_react_select(page, control)
             option = _wait_for_react_option(page, value)
             _safe_click(page, option)
         page.wait_for_timeout(400)
@@ -149,6 +149,17 @@ def _wait_for_react_option(page: Page, value: str) -> Locator:
     raise BuymaDraftError(f"BUYMA category option did not appear: {value}")
 
 
+def _open_react_select(page: Page, control: Locator) -> None:
+    wrapper = control.locator("xpath=ancestor::*[contains(@class, 'Select-control')][1]")
+    target = wrapper if wrapper.count() else control
+    _safe_click(page, target)
+    page.wait_for_timeout(300)
+    if control.get_attribute("aria-expanded") != "true":
+        control.focus()
+        control.press("ArrowDown")
+        page.wait_for_timeout(300)
+
+
 def _select_brand(page: Page, brand: str) -> None:
     section = _section(page, "ブランド")
     field = section.locator("input").first
@@ -167,7 +178,7 @@ def _select_color(page: Page, family: str, name: str) -> None:
     if control.evaluate("element => element.tagName") == "SELECT":
         control.select_option(label=family)
     else:
-        _safe_click(page, control)
+        _open_react_select(page, control)
         _safe_click(page, page.get_by_text(family, exact=True).last)
     if name:
         text_inputs = section.locator("input[type='text']")
