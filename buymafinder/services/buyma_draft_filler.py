@@ -116,15 +116,38 @@ def _upload_images(page: Page, images: list[str]) -> None:
 
 def _select_category(page: Page, path: list[str]) -> None:
     section = _section(page, "カテゴリ")
-    for value in path:
-        controls = section.locator("select, [role='combobox']")
-        index = min(path.index(value), max(controls.count() - 1, 0))
-        control = controls.nth(index)
+    for index, value in enumerate(path):
+        control = _wait_for_combobox(page, section, index, value)
         if control.evaluate("element => element.tagName") == "SELECT":
             control.select_option(label=value)
         else:
             _safe_click(page, control)
-            _safe_click(page, page.get_by_text(value, exact=True).last)
+            option = _wait_for_react_option(page, value)
+            _safe_click(page, option)
+        page.wait_for_timeout(400)
+
+
+def _wait_for_combobox(page: Page, section: Locator, index: int, value: str) -> Locator:
+    controls = section.locator("select, [role='combobox']")
+    for _ in range(40):
+        if controls.count() > index:
+            control = controls.nth(index)
+            if control.is_visible():
+                return control
+        page.wait_for_timeout(250)
+    raise BuymaDraftError(f"BUYMA category level {index + 1} did not appear before selecting: {value}")
+
+
+def _wait_for_react_option(page: Page, value: str) -> Locator:
+    menu_options = page.locator(".Select-menu-outer .Select-option, [role='option']")
+    for _ in range(40):
+        matches = menu_options.filter(has_text=value)
+        for index in range(matches.count()):
+            candidate = matches.nth(index)
+            if candidate.is_visible() and candidate.inner_text().strip() == value:
+                return candidate
+        page.wait_for_timeout(250)
+    raise BuymaDraftError(f"BUYMA category option did not appear: {value}")
 
 
 def _select_brand(page: Page, brand: str) -> None:
@@ -216,8 +239,8 @@ def _safe_click(page: Page, locator: Locator) -> None:
     except PlaywrightTimeoutError:
         _dismiss_blocking_overlays(page, force=True)
         try:
-            locator.scroll_into_view_if_needed(timeout=3_000)
-            locator.click(timeout=3_000, force=True)
+            locator.wait_for(state="attached", timeout=3_000)
+            locator.evaluate("element => element.click()")
         except PlaywrightTimeoutError as retry_error:
             raise BuymaDraftError("BUYMA form control remained blocked after a targeted retry") from retry_error
 
