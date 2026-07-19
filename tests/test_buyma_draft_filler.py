@@ -7,7 +7,7 @@ import pytest
 
 from datetime import date
 
-from buymafinder.services.buyma_draft_filler import BuymaDraftError, _normalized_date, _purchase_deadline_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
+from buymafinder.services.buyma_draft_filler import BuymaDraftError, _contains_yen_price, _normalized_date, _purchase_deadline_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
 
 
 class FakePage:
@@ -50,3 +50,9 @@ def test_date_comparison_accepts_browser_date_separator() -> None:
 
 def test_buyma_deadline_counts_today_as_day_one() -> None:
     assert _purchase_deadline_date(date(2026, 7, 19), 90) == date(2026, 10, 16)
+
+
+@pytest.mark.parametrize("text", ["¥800", "¥ 800", "800円", "送料 ¥1,250"])
+def test_shipping_price_match_ignores_display_format(text: str) -> None:
+    expected = 1250 if "1,250" in text else 800
+    assert _contains_yen_price(text, expected)
