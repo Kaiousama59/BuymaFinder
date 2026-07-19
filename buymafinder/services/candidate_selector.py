@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import json
 from decimal import Decimal
 from pathlib import Path
 
 from buymafinder.core.candidate_models import CandidateSettings, ListingCandidate
 from buymafinder.core.models import Product
+from buymafinder.core.urls import normalize_url
 
 
 CANDIDATE_FIELDS = (
@@ -25,16 +27,22 @@ CANDIDATE_FIELDS = (
 )
 
 
-def select_listing_candidates(products: list[Product], settings: CandidateSettings) -> list[ListingCandidate]:
+def select_listing_candidates(
+    products: list[Product],
+    settings: CandidateSettings,
+    *,
+    excluded_identities: set[tuple[str, str]] | None = None,
+) -> list[ListingCandidate]:
     brand_priority = {brand.casefold(): index + 1 for index, brand in enumerate(settings.preferred_brands)}
+    excluded = excluded_identities or set()
     candidates: list[ListingCandidate] = []
     seen: set[tuple[str, str]] = set()
     for product in products:
         priority = brand_priority.get(product.brand.casefold())
         price = product.current_price
         available_sizes = [item.size for item in product.sizes if item.in_stock]
-        identity = (product.product_url, product.sku)
-        if priority is None or product.in_stock is False or price is None or identity in seen:
+        identity = product_identity(product.product_url, product.sku)
+        if priority is None or product.in_stock is False or price is None or identity in seen or identity in excluded:
             continue
         if settings.maximum_source_price is not None and price > settings.maximum_source_price:
             continue
@@ -69,6 +77,25 @@ def select_listing_candidates(products: list[Product], settings: CandidateSettin
         )
     candidates.sort(key=lambda item: (item.brand_priority, -item.completeness_score, item.source_price, item.sku))
     return candidates[: settings.max_candidates]
+
+
+def product_identity(product_url: str, sku: str) -> tuple[str, str]:
+    return normalize_url(product_url), sku.strip().casefold()
+
+
+def load_existing_listing_identities(root: Path) -> set[tuple[str, str]]:
+    if not root.exists():
+        return set()
+    if not root.is_dir():
+        raise ValueError(f"Listing package root is not a directory: {root}")
+    identities: set[tuple[str, str]] = set()
+    for path in root.rglob("listing_data.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            identities.add(product_identity(str(payload["source_url"]), str(payload.get("sku", ""))))
+        except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+            raise ValueError(f"Invalid existing listing package: {path}") from error
+    return identities
 
 
 def export_listing_candidates(candidates: list[ListingCandidate], path: Path) -> None:

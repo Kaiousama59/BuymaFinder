@@ -148,3 +148,5 @@ Only in-stock products with the configured minimum images, a description, and
 an available size are included. The output `output/listing_candidates.csv`
 starts with a blank `approved` field and `review_required` status. Brand order
 comes only from the local configuration and can be updated as demand changes.
+Products already present under `~/Desktop/BUYMA/ListingImages` are excluded by
+normalized source URL and SKU to prevent duplicate drafts.

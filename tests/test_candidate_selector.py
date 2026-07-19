@@ -7,7 +7,12 @@ from pathlib import Path
 
 from buymafinder.core.candidate_models import CandidateSettings
 from buymafinder.core.models import Product, SizeStock
-from buymafinder.services.candidate_selector import export_listing_candidates, select_listing_candidates
+from buymafinder.services.candidate_selector import (
+    export_listing_candidates,
+    load_existing_listing_identities,
+    product_identity,
+    select_listing_candidates,
+)
 
 
 def product(brand: str, sku: str, *, price: str = "100", images: int = 3, description: str = "Details") -> Product:
@@ -64,3 +69,22 @@ def test_export_requires_review_and_contains_no_invented_profit(tmp_path: Path) 
     assert row["approved"] == ""
     assert row["selection_status"] == "review_required"
     assert "profit" not in row
+
+
+def test_excludes_existing_listing_package(tmp_path: Path) -> None:
+    existing = tmp_path / "brand" / "sku"
+    existing.mkdir(parents=True)
+    (existing / "listing_data.json").write_text(
+        '{"source_url": "https://eleonorabonucci.com/en/product/A", "sku": "A"}',
+        encoding="utf-8",
+    )
+    settings = CandidateSettings(preferred_brands=["AMI PARIS"])
+
+    result = select_listing_candidates(
+        [product("AMI PARIS", "A"), product("AMI PARIS", "B")],
+        settings,
+        excluded_identities=load_existing_listing_identities(tmp_path),
+    )
+
+    assert [item.sku for item in result] == ["B"]
+    assert product_identity("https://eleonorabonucci.com/en/product/A", "a") in load_existing_listing_identities(tmp_path)
