@@ -39,6 +39,7 @@ def prepare_listing_package(
         source_price="" if price is None else format(price, "f"),
         source_description=product.description,
         source_sizes=[item.size for item in product.sizes if item.in_stock is not False],
+        source_size_stock={item.size: item.in_stock for item in product.sizes},
         settings=settings,
         image_urls=image_urls,
         image_files=image_files,

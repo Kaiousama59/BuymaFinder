@@ -32,6 +32,7 @@ def test_prepare_listing_package_writes_reviewable_json(tmp_path: Path) -> None:
     assert folder == tmp_path / "Eleonora_Bonucci" / "AMI_PARIS" / "FTP811_JE0117100"
     assert payload["buyma_total_price_jpy"] == 33200
     assert payload["source_sizes"] == ["S"]
+    assert payload["source_size_stock"] == {"S": True, "M": False}
     assert len(payload["image_urls"]) == 2
 
 

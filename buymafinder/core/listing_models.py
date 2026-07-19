@@ -68,6 +68,7 @@ class ListingDraft:
     source_price: str
     source_description: str
     source_sizes: list[str]
+    source_size_stock: dict[str, bool]
     settings: ListingSettings
     image_urls: list[str] = field(default_factory=list)
     image_files: list[str] = field(default_factory=list)

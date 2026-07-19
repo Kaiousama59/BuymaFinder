@@ -104,3 +104,9 @@ python fill_buyma_draft.py \
 After the filled form has been reviewed, rerun with `--save-draft` to click only
 the exact draft-save button. An existing saved shipping method matching the
 configured name is required.
+
+Immediately before filling the BUYMA form, the draft filler reopens the Eleonora
+Bonucci product page and verifies every size. Available sizes are marked as
+`買付可`, sold-out sizes as `買付不可`, purchasable quantity is set to 1 when at
+least one size is available, and on-hand stock remains 0. If live stock cannot be
+verified, the run stops without saving the draft.

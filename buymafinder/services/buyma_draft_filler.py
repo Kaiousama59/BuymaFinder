@@ -8,6 +8,9 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import BrowserContext, Locator, Page, TimeoutError as PlaywrightTimeoutError
 
+from buymafinder.core.models import SizeStock, Source
+from buymafinder.shops.eleonora import parse_product_detail_html
+
 
 BUYMA_NEW_LISTING_URL = "https://www.buyma.com/my/sell/new?tab=b"
 
@@ -51,6 +54,7 @@ def fill_buyma_draft(
     settings = payload["settings"]
     assert_safe_buyma_page(page)
     _dismiss_blocking_overlays(page)
+    size_stocks = _refresh_source_stock(page.context, payload)
 
     images = [str((package_folder / name).resolve()) for name in payload["image_files"]]
     _upload_images(page, images)
@@ -61,7 +65,7 @@ def fill_buyma_draft(
     _select_color(page, settings["color_family"], settings.get("color_name", ""))
     _fill_sizes(
         page,
-        payload.get("source_sizes", []),
+        [item.size for item in size_stocks],
         settings.get("size_notes", ""),
         size_variation=settings.get("size_variation", True),
         size_unit=settings.get("size_unit", "cm"),
@@ -69,6 +73,12 @@ def fill_buyma_draft(
     _select_shipping(page, settings["shipping_method"])
     _fill_purchase_and_price(page, payload)
     _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
+    _fill_size_inventory(
+        page,
+        size_stocks,
+        purchasable_quantity=settings.get("purchasable_quantity", 1),
+        on_hand_quantity=settings.get("on_hand_quantity", 0),
+    )
     _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
 
     if save_draft:
@@ -81,6 +91,43 @@ def fill_buyma_draft(
         button.first.click()
         page.wait_for_timeout(1500)
         logging.info("BUYMA draft-save button clicked. Current URL: %s", page.url)
+
+
+def _refresh_source_stock(context: BrowserContext, payload: dict) -> list[SizeStock]:
+    source_url = str(payload["source_url"])
+    parsed = urlsplit(source_url)
+    if parsed.scheme != "https" or parsed.netloc not in {
+        "eleonorabonucci.com",
+        "www.eleonorabonucci.com",
+    }:
+        raise BuymaDraftError(f"Live stock refresh is not supported for this supplier URL: {source_url}")
+    source = Source(
+        shop_code="eleonora",
+        shop_name=str(payload["supplier"]),
+        target="women",
+        category="Clothing",
+        list_url=source_url,
+    )
+    stock_page = context.new_page()
+    try:
+        stock_page.goto(source_url, wait_until="domcontentloaded", timeout=60_000)
+        stock_page.locator("select option").first.wait_for(state="attached", timeout=20_000)
+        product = parse_product_detail_html(stock_page.content(), source_url, source)
+    except Exception as error:
+        raise BuymaDraftError(
+            "Could not verify current sizes and stock on Eleonora Bonucci; draft was not saved"
+        ) from error
+    finally:
+        stock_page.close()
+    if not product.sizes:
+        raise BuymaDraftError(
+            "Eleonora Bonucci returned no size stock; draft was not saved to avoid stale inventory"
+        )
+    logging.info(
+        "Live source stock verified: %s",
+        ", ".join(f"{item.size}={'available' if item.in_stock else 'sold out'}" for item in product.sizes),
+    )
+    return product.sizes
 
 
 def wait_for_new_listing(page: Page, timeout_ms: int = 600_000) -> None:
@@ -352,6 +399,54 @@ def _select_location_value(page: Page, section_title: str, value: str) -> None:
 def _fill_purchase_deadline(page: Page, days: int) -> None:
     deadline = date.today() + timedelta(days=days)
     _fill_near(page, "購入期限(日本時間)", "input", deadline.strftime("%Y/%m/%d"))
+
+
+def _fill_size_inventory(
+    page: Page,
+    size_stocks: list[SizeStock],
+    *,
+    purchasable_quantity: int,
+    on_hand_quantity: int,
+) -> None:
+    marker = page.get_by_text("買付できる合計数量を入力", exact=False)
+    try:
+        marker.first.wait_for(state="visible", timeout=10_000)
+    except PlaywrightTimeoutError as error:
+        raise BuymaDraftError("BUYMA size inventory controls did not appear") from error
+    section = marker.first.locator(
+        "xpath=ancestor::*[self::section or self::div]"
+        "[contains(., '手元に在庫あり合計数量')]"
+        "[.//select or .//*[@role='combobox']][1]"
+    )
+    controls = section.locator("select:visible, [role='combobox']:visible")
+    if controls.count() < len(size_stocks):
+        raise BuymaDraftError(
+            f"BUYMA showed {controls.count()} inventory rows for {len(size_stocks)} source sizes"
+        )
+    for index, item in enumerate(size_stocks):
+        _select_control_label(page, controls.nth(index), "買付可" if item.in_stock else "買付不可")
+
+    available = any(item.in_stock for item in size_stocks)
+    purchase_total = purchasable_quantity if available else 0
+    purchase_input = marker.first.locator(
+        "xpath=ancestor::*[self::div or self::section][.//input][1]"
+    ).locator("input").first
+    if purchase_input.count() == 0:
+        raise BuymaDraftError("BUYMA purchasable-quantity input did not appear")
+    purchase_input.fill(str(purchase_total))
+
+    on_hand_marker = page.get_by_text("手元に在庫あり合計数量", exact=False)
+    if on_hand_marker.count():
+        on_hand_input = on_hand_marker.first.locator(
+            "xpath=ancestor::*[self::div or self::section][.//input][1]"
+        ).locator("input").first
+        if on_hand_input.count():
+            on_hand_input.fill(str(on_hand_quantity))
+    logging.info(
+        "BUYMA inventory filled: purchasable=%d, on_hand=%d",
+        purchase_total,
+        on_hand_quantity,
+    )
 
 
 def _select_shipping(page: Page, method: str) -> None:
