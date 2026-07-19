@@ -73,13 +73,13 @@ def fill_buyma_draft(
     _select_shipping(page, settings["shipping_method"])
     _fill_purchase_and_price(page, payload)
     _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
+    _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
     _fill_size_inventory(
         page,
         size_stocks,
         purchasable_quantity=settings.get("purchasable_quantity", 1),
         on_hand_quantity=settings.get("on_hand_quantity", 0),
     )
-    _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
 
     if save_draft:
         assert_safe_buyma_page(page)
@@ -436,15 +436,10 @@ def _fill_size_inventory(
     if purchase_input.input_value() != str(purchase_total):
         raise BuymaDraftError("BUYMA purchasable quantity was not accepted")
 
-    on_hand_marker = page.get_by_text("手元に在庫あり合計数量", exact=False)
-    if on_hand_marker.count():
-        on_hand_input = on_hand_marker.first.locator("xpath=following::input[1]")
-        if on_hand_input.count():
-            on_hand_input.fill(str(on_hand_quantity))
-            if on_hand_input.input_value() != str(on_hand_quantity):
-                raise BuymaDraftError("BUYMA on-hand quantity was not accepted")
+    if on_hand_quantity != 0:
+        raise BuymaDraftError("Non-zero on-hand inventory is not supported by the BUYMA draft filler")
     logging.info(
-        "BUYMA inventory filled: purchasable=%d, on_hand=%d",
+        "BUYMA inventory filled: purchasable=%d; on-hand inventory remains at BUYMA's default %d",
         purchase_total,
         on_hand_quantity,
     )
