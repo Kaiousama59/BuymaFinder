@@ -188,8 +188,8 @@ python fill_buyma_drafts.py \
 
 The batch refreshes live Eleonora stock before every draft, stops on the first
 failure, and resumes from `data/buyma_batch_progress.json`. It never publishes a
-listing. Candidate packages select a saved `日本郵便 - ゆうパック` row by both
-method name and buyer-visible shipping price: JPY 300 for lightweight clothing,
-JPY 800 for jackets and dresses, and JPY 950 for coats, trenches, and leather
-outerwear. Add all three saved shipping rows in BUYMA before running the batch.
+listing. Candidate packages use `かんたんBUYMA便【匿名配送】`: ゆうパケット
+at JPY 280 for lightweight clothing, ゆうパック 60サイズ at JPY 800 for
+jackets and dresses, and ゆうパック 80サイズ at JPY 950 for coats, trenches,
+and leather outerwear. All three methods must be available in BUYMA before the batch runs.
 The command pauses three seconds between drafts.
