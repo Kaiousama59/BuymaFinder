@@ -44,6 +44,18 @@ def test_reference_size_uses_buyma_boundary_labels(source: str, expected: str) -
     assert _reference_size_label(source) == expected
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [("38", "XS以下"), ("40", "S"), ("42", "M"), ("44", "L"), ("46", "XL以上"), ("48", "XL以上")],
+)
+def test_reference_size_maps_italian_clothing_sizes(source: str, expected: str) -> None:
+    assert _reference_size_label(source, ["レディースファッション", "トップス"]) == expected
+
+
+def test_reference_size_does_not_treat_european_shoe_size_as_clothing() -> None:
+    assert _reference_size_label("40", ["レディースファッション", "靴・シューズ"]) == "指定なし"
+
+
 def test_date_comparison_accepts_browser_date_separator() -> None:
     assert _normalized_date("2026-10-17") == _normalized_date("2026/10/17")
 
