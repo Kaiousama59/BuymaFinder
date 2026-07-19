@@ -75,11 +75,16 @@ def test_builds_product_specific_settings_without_guessing_color() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "shipping"),
-    [("T-SHIRT IN COTONE", 300), ("GIACCA IN DENIM", 800), ("CABAN REVERSIBILE", 950)],
+    ("name", "method", "shipping"),
+    [
+        ("T-SHIRT IN COTONE", "かんたんBUYMA便【匿名配送】 - ゆうパケット", 280),
+        ("GIACCA IN DENIM", "かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ", 800),
+        ("CABAN REVERSIBILE", "かんたんBUYMA便【匿名配送】 - ゆうパック 80サイズ", 950),
+    ],
 )
-def test_uses_reviewed_shipping_class(name: str, shipping: int) -> None:
+def test_uses_reviewed_shipping_class(name: str, method: str, shipping: int) -> None:
     settings = listing_settings_for_candidate(_product(name), _candidate(), _settings())
+    assert settings.shipping_method == method
     assert settings.buyer_shipping_jpy == shipping
 
 
