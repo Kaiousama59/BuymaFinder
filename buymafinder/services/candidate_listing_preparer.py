@@ -93,13 +93,30 @@ def prepare_candidate_packages(
 ) -> list[Path]:
     by_identity = {(product.product_url.strip(), product.sku.strip().casefold()): product for product in products}
     folders: list[Path] = []
+    skipped: list[tuple[str, str]] = []
     for row in candidate_rows:
         key = (row.get("product_url", "").strip(), row.get("sku", "").strip().casefold())
         product = by_identity.get(key)
         if product is None:
             raise CandidatePreparationError(f"Candidate was not found in product CSV: {row.get('sku', '')}")
-        settings = listing_settings_for_candidate(product, row, base_settings)
+        try:
+            settings = listing_settings_for_candidate(product, row, base_settings)
+        except CandidatePreparationError as error:
+            skipped.append((product.sku, str(error)))
+            continue
         folders.append(prepare_listing_package(product, settings, output_root, download_images=download_images))
+    if skipped:
+        import logging
+
+        for sku, reason in skipped:
+            logging.warning("Skipped candidate %s: %s", sku, reason)
+        logging.warning(
+            "Skipped %d of %d candidates; handle them manually or extend the rules.",
+            len(skipped),
+            len(candidate_rows),
+        )
+    if not folders:
+        raise CandidatePreparationError("Every candidate was skipped; nothing to prepare.")
     return folders
 
 
