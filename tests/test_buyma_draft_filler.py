@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from buymafinder.services.buyma_draft_filler import BuymaDraftError, _normalized_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
+from datetime import date
+
+from buymafinder.services.buyma_draft_filler import BuymaDraftError, _normalized_date, _purchase_deadline_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
 
 
 class FakePage:
@@ -44,3 +46,7 @@ def test_reference_size_uses_buyma_boundary_labels(source: str, expected: str) -
 
 def test_date_comparison_accepts_browser_date_separator() -> None:
     assert _normalized_date("2026-10-17") == _normalized_date("2026/10/17")
+
+
+def test_buyma_deadline_counts_today_as_day_one() -> None:
+    assert _purchase_deadline_date(date(2026, 7, 19), 90) == date(2026, 10, 16)

@@ -398,7 +398,7 @@ def _select_location_value(page: Page, section_title: str, value: str, *, level:
 
 
 def _fill_purchase_deadline(page: Page, days: int) -> None:
-    deadline = date.today() + timedelta(days=days)
+    deadline = _purchase_deadline_date(date.today(), days)
     value = deadline.strftime("%Y/%m/%d")
     section = _section(page, "購入期限(日本時間)")
     field = section.locator("input:visible").last
@@ -422,12 +422,18 @@ def _normalized_date(value: str) -> str:
     return value.replace("-", "/").lstrip("0")
 
 
+def _purchase_deadline_date(today: date, days: int) -> date:
+    # BUYMA counts today as day one of its maximum 90-day purchase window.
+    return today + timedelta(days=days - 1)
+
+
 def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
     field.click()
     page.wait_for_timeout(300)
     calendar_selectors = (
         ".react-datepicker:visible",
         ".ui-datepicker:visible",
+        ".rdtPicker:visible",
         "[class*='calendar']:visible",
         "[class*='Calendar']:visible",
     )
@@ -445,10 +451,17 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
         "button[aria-label*='Next' i]",
         ".react-datepicker__navigation--next",
         ".ui-datepicker-next",
+        ".rdtNext",
+        "[class*='next' i]",
     )
     today = date.today()
     month_steps = (deadline.year - today.year) * 12 + deadline.month - today.month
     for _ in range(month_steps):
+        for selector in calendar_selectors:
+            candidates = page.locator(selector)
+            if candidates.count() and candidates.last.is_visible():
+                calendar = candidates.last
+                break
         next_button: Locator | None = None
         for selector in next_selectors:
             matches = calendar.locator(selector)
@@ -467,6 +480,7 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
     day_selectors = (
         ".react-datepicker__day:not(.react-datepicker__day--disabled):not(.react-datepicker__day--outside-month)",
         "td:not(.ui-datepicker-unselectable) a",
+        "td.rdtDay:not(.rdtDisabled)",
         "[role='gridcell']:not([aria-disabled='true']) button",
         "[role='gridcell']:not([aria-disabled='true'])",
         "button[data-date]:not([disabled])",
