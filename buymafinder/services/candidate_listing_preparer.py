@@ -124,7 +124,16 @@ def listing_settings_for_candidate(
     product: Product, candidate: dict[str, str], base: ListingSettings
 ) -> ListingSettings:
     product_type, category_path = classify_product(product.name)
-    color_family, color_name = classify_color(product)
+    try:
+        color_family, color_name = classify_color(product)
+    except CandidatePreparationError:
+        import logging
+
+        logging.warning(
+            "No color rule matched %s; using 色指定なし (set the color manually if BUYMA requires one)",
+            product.sku,
+        )
+        color_family, color_name = "色指定なし", ""
     listing_price = _positive_int(candidate, "suggested_listing_price_jpy")
     expected_profit = _positive_int(candidate, "expected_profit_jpy")
     expected_margin = _decimal(candidate, "expected_profit_margin")
