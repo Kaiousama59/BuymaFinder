@@ -113,3 +113,22 @@ verified, the run stops without saving the draft.
 
 Overseas buying locations are selected as a two-level path. The current AMI
 PARIS package uses `ヨーロッパ` followed by `イタリア`.
+
+## Save multiple prepared BUYMA drafts
+
+After reviewing and preparing multiple product folders, save up to five drafts
+in one browser session:
+
+```bash
+python fill_buyma_drafts.py \
+  "$HOME/Desktop/BUYMA/ListingImages/Eleonora_Bonucci" \
+  --save-drafts \
+  --limit 5
+```
+
+The command recursively finds prepared `listing_data.json` files. It verifies
+live source stock separately for every product, saves only BUYMA drafts, and
+records completed products in `data/buyma_batch_progress.json`. If one product
+fails, the batch stops immediately. Rerunning the command skips recorded
+products and resumes with the next package. It never clicks a public listing or
+confirmation button.
