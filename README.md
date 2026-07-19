@@ -89,3 +89,18 @@ python prepare_listing.py \
 Output defaults to `~/Desktop/BUYMA/ListingImages/<supplier>/<brand>/<sku>/`.
 Downloads are retried, query-string duplicates and images belonging to another
 product are removed, and a different existing file is never overwritten.
+
+## Fill and save one BUYMA draft
+
+The browser automation is restricted to BUYMA's new-listing URL and never clicks
+the public listing or confirmation buttons. The first run opens a dedicated Chrome
+profile; log in to BUYMA there if requested. Start with review-only mode:
+
+```bash
+python fill_buyma_draft.py \
+  "$HOME/Desktop/BUYMA/ListingImages/Eleonora_Bonucci/AMI_PARIS/FTP811_JE0117100"
+```
+
+After the filled form has been reviewed, rerun with `--save-draft` to click only
+the exact draft-save button. An existing saved shipping method matching the
+configured name is required.
