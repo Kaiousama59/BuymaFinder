@@ -36,7 +36,7 @@ def assert_safe_buyma_page(page: Page) -> None:
     parsed = urlsplit(page.url)
     if parsed.scheme != "https" or parsed.netloc not in {"buyma.com", "www.buyma.com"}:
         raise BuymaDraftError(f"Refusing to fill a non-BUYMA page: {page.url}")
-    if parsed.path != "/my/sell/new":
+    if parsed.path.rstrip("/") != "/my/sell/new":
         raise BuymaDraftError(f"Refusing to fill a page other than BUYMA new listing: {page.url}")
 
 

@@ -13,7 +13,11 @@ class FakePage:
         self.url = url
 
 
-@pytest.mark.parametrize("url", ["https://www.buyma.com/my/sell/new?tab=b", "https://buyma.com/my/sell/new"])
+@pytest.mark.parametrize("url", [
+    "https://www.buyma.com/my/sell/new?tab=b",
+    "https://www.buyma.com/my/sell/new/?tab=b",
+    "https://buyma.com/my/sell/new",
+])
 def test_safe_page_accepts_only_buyma_new_listing(url: str) -> None:
     assert_safe_buyma_page(FakePage(url))  # type: ignore[arg-type]
 
