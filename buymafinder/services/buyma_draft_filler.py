@@ -446,14 +446,6 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
     if calendar is None:
         raise BuymaDraftError("BUYMA purchase-deadline calendar did not appear")
 
-    exact_date = page.locator(
-        f'.react-datepicker__day[aria-label^="Choose {deadline.year}年{deadline.month}月{deadline.day}日"]'
-    )
-    if exact_date.count() and exact_date.first.is_visible():
-        _safe_click(page, exact_date.first)
-        page.wait_for_timeout(300)
-        return
-
     next_selectors = (
         "button[aria-label*='次']",
         "button[aria-label*='Next' i]",
@@ -462,9 +454,14 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
         ".rdtNext",
         "[class*='next' i]",
     )
-    today = date.today()
-    month_steps = (deadline.year - today.year) * 12 + deadline.month - today.month
-    for _ in range(month_steps):
+    for _ in range(12):
+        exact_date = page.locator(
+            f'.react-datepicker__day[aria-label^="Choose {deadline.year}年{deadline.month}月{deadline.day}日"]'
+        )
+        if exact_date.count() and exact_date.first.is_visible():
+            _safe_click(page, exact_date.first)
+            page.wait_for_timeout(300)
+            return
         for selector in calendar_selectors:
             candidates = page.locator(selector)
             if candidates.count() and candidates.last.is_visible():
@@ -485,26 +482,6 @@ def _select_calendar_date(page: Page, field: Locator, deadline: date) -> None:
         _safe_click(page, next_button)
         page.wait_for_timeout(250)
 
-    day_selectors = (
-        ".react-datepicker__day:not(.react-datepicker__day--disabled):not(.react-datepicker__day--outside-month)",
-        "td:not(.ui-datepicker-unselectable) a",
-        "td.rdtDay:not(.rdtDisabled)",
-        "[role='gridcell']:not([aria-disabled='true']) button",
-        "[role='gridcell']:not([aria-disabled='true'])",
-        "button[data-date]:not([disabled])",
-        "button:not([disabled])",
-    )
-    for selector in day_selectors:
-        days = calendar.locator(selector)
-        matching_days = [
-            days.nth(index)
-            for index in range(days.count())
-            if days.nth(index).is_visible() and days.nth(index).inner_text().strip() == str(deadline.day)
-        ]
-        if matching_days:
-            _safe_click(page, matching_days[0])
-            page.wait_for_timeout(300)
-            return
     raise BuymaDraftError(f"BUYMA calendar had no selectable date for {deadline:%Y/%m/%d}")
 
 
