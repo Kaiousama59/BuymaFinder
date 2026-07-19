@@ -40,6 +40,25 @@ _EASY_BUYMA_100 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 100
 # Multiple methods are checked on the form so the actual shipment can match
 # the real parcel size. The first entry defines buyer_shipping_jpy.
 _DEFAULT_SHIPPING_METHODS = (_EASY_BUYMA_PACKET, _EASY_BUYMA_60)
+_COLOR_RULES = (
+    (("NERO", "BLACK", "NOIR"), ("ブラック系", "ブラック")),
+    (("BIANCO", "WHITE", "OFF-WHITE", "OFFWHITE", "AVORIO", "IVORY", "PANNA"), ("ホワイト系", "ホワイト")),
+    (("GRIGIO", "GREY", "GRAY", "ANTRACITE"), ("グレー系", "グレー")),
+    (("BEIGE", "SABBIA", "CREMA", "CAMMELLO", "CAMEL", "TAUPE", "ECRU"), ("ベージュ系", "ベージュ")),
+    (("MARRONE", "BROWN", "CIOCCOLATO", "MORO", "CUOIO", "TABACCO", "COGNAC"), ("ブラウン系", "ブラウン")),
+    (("NAVY", "BLU SCURO", "INDACO"), ("ネイビー系", "ネイビー")),
+    (("BLU", "BLUE", "COBALTO", "AZZURRO", "CELESTE", "DENIM"), ("ブルー系", "ブルー")),
+    (("VERDE", "GREEN", "MILITARE", "KHAKI", "KAKI", "OLIVA", "SALVIA"), ("グリーン系", "グリーン")),
+    (("ROSSO", "RED", "BORDEAUX", "BURGUNDY", "VINACCIA"), ("レッド系", "レッド")),
+    (("ROSA", "PINK", "FUCSIA", "MAGENTA"), ("ピンク系", "ピンク")),
+    (("VIOLA", "PURPLE", "LILLA", "LAVANDA"), ("パープル系", "パープル")),
+    (("GIALLO", "YELLOW", "SENAPE", "MOSTARDA"), ("イエロー系", "イエロー")),
+    (("ARANCIONE", "ORANGE", "CORALLO"), ("オレンジ系", "オレンジ")),
+    (("ARGENTO", "SILVER"), ("シルバー系", "シルバー")),
+    (("ORO", "GOLD", "DORATO"), ("ゴールド系", "ゴールド")),
+    (("MULTICOLOR", "MULTICOLOUR", "FANTASIA", "STAMPA", "FLOREALE", "PRINT"), ("マルチカラー", "マルチカラー")),
+)
+
 _SHIPPING_METHODS_BY_PRODUCT_TYPE = {
     "コート": (_EASY_BUYMA_80, _EASY_BUYMA_100),
     "トレンチコート": (_EASY_BUYMA_80, _EASY_BUYMA_100),
@@ -88,6 +107,7 @@ def listing_settings_for_candidate(
     product: Product, candidate: dict[str, str], base: ListingSettings
 ) -> ListingSettings:
     product_type, category_path = classify_product(product.name)
+    color_family, color_name = classify_color(product)
     listing_price = _positive_int(candidate, "suggested_listing_price_jpy")
     expected_profit = _positive_int(candidate, "expected_profit_jpy")
     expected_margin = _decimal(candidate, "expected_profit_margin")
@@ -110,14 +130,15 @@ def listing_settings_for_candidate(
         japanese_title=title,
         japanese_description=description,
         buyma_category_path=list(category_path),
-        color_family="色指定なし",
-        color_name="",
+        color_family=color_family,
+        color_name=color_name,
         listing_price_jpy=listing_price,
         buyer_shipping_jpy=buyer_shipping,
         shipping_method=shipping_method,
         shipping_methods=shipping_methods,
         private_memo=private_memo,
         size_notes=size_notes,
+        size_unit="指定なし",
         description_source_url=product.product_url,
     )
 
@@ -128,6 +149,24 @@ def classify_product(source_name: str) -> tuple[str, tuple[str, str, str]]:
         if any(keyword in normalized for keyword in keywords):
             return japanese_type, category
     raise CandidatePreparationError(f"No reviewed BUYMA category rule for product: {source_name}")
+
+
+def classify_color(product: Product) -> tuple[str, str]:
+    """Map the source color (or name/description keywords) to a BUYMA color.
+
+    Raises CandidatePreparationError when no rule matches, so the owner can
+    extend _COLOR_RULES instead of the tool guessing a wrong color.
+    """
+    for text in (product.color, product.name, product.description):
+        normalized = " ".join((text or "").upper().split())
+        if not normalized:
+            continue
+        for keywords, result in _COLOR_RULES:
+            if any(keyword in normalized for keyword in keywords):
+                return result
+    raise CandidatePreparationError(
+        f"No color rule matched product {product.sku}: color={product.color!r} name={product.name!r}"
+    )
 
 
 def write_package_queue(folders: list[Path], path: Path) -> None:

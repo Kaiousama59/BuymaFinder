@@ -375,13 +375,15 @@ def _reference_size_label(source_size: str, category_path: list[str] | None = No
     if normalized.isdigit() and not any(term in category for term in ("靴", "シューズ", "ブーツ")):
         italian_size = int(normalized)
         if 34 <= italian_size <= 60 and italian_size % 2 == 0:
-            if italian_size <= 38:
+            # Standard womenswear IT -> JP reference (brands vary; shown as 参考 only):
+            # IT36 and below = XS, IT38 = S, IT40 = M, IT42 = L, IT44 and above = XL.
+            if italian_size <= 36:
                 return "XS以下"
-            if italian_size == 40:
+            if italian_size == 38:
                 return "S"
-            if italian_size == 42:
+            if italian_size == 40:
                 return "M"
-            if italian_size == 44:
+            if italian_size == 42:
                 return "L"
             return "XL以上"
     if normalized.isdigit():
