@@ -74,6 +74,7 @@ def fill_buyma_draft(
     _fill_purchase_and_price(page, payload)
     _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
     _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
+    _fill_supplier_memo(page, payload["supplier"], payload["source_url"])
     _fill_size_inventory(
         page,
         size_stocks,
@@ -345,7 +346,6 @@ def _fill_purchase_and_price(page: Page, payload: dict) -> None:
     _check_label(page, "海外" if settings["purchasing_location"] == "overseas" else "国内", occurrence=0)
     _select_location_value(page, "買付地", settings.get("buying_region", "ヨーロッパ"), level=0)
     _select_location_value(page, "買付地", settings.get("buying_country", "イタリア"), level=1)
-    _fill_near(page, "買付先ショップ名", "input", payload["supplier"][:30], required=False)
     _check_label(page, "国内" if settings["shipping_location"] == "domestic" else "海外", occurrence=-1)
     _select_location_value(page, "発送地", settings.get("shipping_prefecture", "神奈川県"), level=0)
     _fill_near(page, "商品価格", "input", str(settings["listing_price_jpy"]))
@@ -399,7 +399,65 @@ def _select_location_value(page: Page, section_title: str, value: str, *, level:
 
 def _fill_purchase_deadline(page: Page, days: int) -> None:
     deadline = date.today() + timedelta(days=days)
-    _fill_near(page, "購入期限(日本時間)", "input", deadline.strftime("%Y/%m/%d"))
+    value = deadline.strftime("%Y/%m/%d")
+    section = _section(page, "購入期限(日本時間)")
+    field = section.locator("input:visible").last
+    try:
+        field.wait_for(state="visible", timeout=5_000)
+        field.click()
+        field.press("Meta+A")
+        field.fill(value, timeout=5_000)
+        field.press("Tab")
+    except PlaywrightTimeoutError:
+        pass
+    if field.input_value() != value:
+        field.evaluate(
+            """(element, nextValue) => {
+                const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                setter.call(element, nextValue);
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+                element.blur();
+            }""",
+            value,
+        )
+    if field.input_value() != value:
+        raise BuymaDraftError(f"BUYMA purchase deadline was not accepted: {value}")
+
+
+def _fill_supplier_memo(page: Page, supplier: str, source_url: str) -> None:
+    button = page.get_by_text("買付先メモを設定", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("BUYMA supplier-memo button did not appear")
+    _safe_click(page, button.first)
+    page.wait_for_timeout(400)
+    dialog = page.get_by_role("dialog")
+    if dialog.count() == 0:
+        dialog = page.locator(".modal:visible, [class*='modal']:visible")
+    try:
+        dialog.last.wait_for(state="visible", timeout=5_000)
+    except PlaywrightTimeoutError as error:
+        raise BuymaDraftError("BUYMA supplier-memo dialog did not appear") from error
+    modal = dialog.last
+    memo_fields = modal.locator("textarea:visible, input[type='text']:visible")
+    link_fields = modal.locator("input[type='url']:visible, input[placeholder*='URL' i]:visible, input[placeholder*='リンク']:visible")
+    if memo_fields.count() == 0:
+        raise BuymaDraftError("BUYMA supplier-memo text field did not appear")
+    memo_fields.first.fill(f"仕入先サイト: {supplier}")
+    if link_fields.count():
+        link_fields.first.fill(source_url)
+    elif memo_fields.count() > 1:
+        memo_fields.nth(1).fill(source_url)
+    else:
+        raise BuymaDraftError("BUYMA supplier-memo link field did not appear")
+    save = modal.get_by_role("button", name="設定する", exact=True)
+    if save.count() == 0:
+        save = modal.get_by_role("button", name="保存", exact=True)
+    if save.count() == 0:
+        raise BuymaDraftError("BUYMA supplier-memo save button did not appear")
+    _safe_click(page, save.first)
 
 
 def _fill_size_inventory(
