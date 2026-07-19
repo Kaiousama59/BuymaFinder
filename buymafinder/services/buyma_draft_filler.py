@@ -343,11 +343,11 @@ def _reference_size_label(source_size: str) -> str:
 def _fill_purchase_and_price(page: Page, payload: dict) -> None:
     settings = payload["settings"]
     _check_label(page, "海外" if settings["purchasing_location"] == "overseas" else "国内", occurrence=0)
-    _select_location_value(page, "買付地", settings.get("buying_region", "ヨーロッパ"))
-    _select_location_value(page, "買付地", settings.get("buying_country", "イタリア"))
+    _select_location_value(page, "買付地", settings.get("buying_region", "ヨーロッパ"), level=0)
+    _select_location_value(page, "買付地", settings.get("buying_country", "イタリア"), level=1)
     _fill_near(page, "買付先ショップ名", "input", payload["supplier"][:30], required=False)
     _check_label(page, "国内" if settings["shipping_location"] == "domestic" else "海外", occurrence=-1)
-    _select_location_value(page, "発送地", settings.get("shipping_prefecture", "神奈川県"))
+    _select_location_value(page, "発送地", settings.get("shipping_prefecture", "神奈川県"), level=0)
     _fill_near(page, "商品価格", "input", str(settings["listing_price_jpy"]))
     if settings.get("duties_included"):
         checkbox = page.get_by_text("関税込み（購入者の関税負担なし）", exact=False)
@@ -355,16 +355,16 @@ def _fill_purchase_and_price(page: Page, payload: dict) -> None:
             checkbox.first.click()
 
 
-def _select_location_value(page: Page, section_title: str, value: str) -> None:
+def _select_location_value(page: Page, section_title: str, value: str, *, level: int) -> None:
     section = _section(page, section_title)
     controls = section.locator("select, [role='combobox']")
     for _ in range(40):
-        if controls.count() and controls.last.is_visible():
+        if controls.count() > level and controls.nth(level).is_visible():
             break
         page.wait_for_timeout(250)
     else:
         raise BuymaDraftError(f"BUYMA location selector did not appear: {section_title}")
-    control = controls.last
+    control = controls.nth(level)
     if control.evaluate("element => element.tagName") == "SELECT":
         options = control.locator("option")
         matching_value: str | None = None
@@ -429,20 +429,20 @@ def _fill_size_inventory(
 
     available = any(item.in_stock for item in size_stocks)
     purchase_total = purchasable_quantity if available else 0
-    purchase_input = marker.first.locator(
-        "xpath=ancestor::*[self::div or self::section][.//input][1]"
-    ).locator("input").first
+    purchase_input = marker.first.locator("xpath=following::input[1]")
     if purchase_input.count() == 0:
         raise BuymaDraftError("BUYMA purchasable-quantity input did not appear")
     purchase_input.fill(str(purchase_total))
+    if purchase_input.input_value() != str(purchase_total):
+        raise BuymaDraftError("BUYMA purchasable quantity was not accepted")
 
     on_hand_marker = page.get_by_text("手元に在庫あり合計数量", exact=False)
     if on_hand_marker.count():
-        on_hand_input = on_hand_marker.first.locator(
-            "xpath=ancestor::*[self::div or self::section][.//input][1]"
-        ).locator("input").first
+        on_hand_input = on_hand_marker.first.locator("xpath=following::input[1]")
         if on_hand_input.count():
             on_hand_input.fill(str(on_hand_quantity))
+            if on_hand_input.input_value() != str(on_hand_quantity):
+                raise BuymaDraftError("BUYMA on-hand quantity was not accepted")
     logging.info(
         "BUYMA inventory filled: purchasable=%d, on_hand=%d",
         purchase_total,
