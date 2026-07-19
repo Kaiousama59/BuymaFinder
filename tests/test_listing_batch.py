@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from buymafinder.services.buyma_draft_filler import BuymaDraftError
-from buymafinder.services.listing_batch import discover_batch_items, load_completed_keys, save_completed_keys
+from buymafinder.services.listing_batch import (
+    discover_batch_items,
+    discover_queued_batch_items,
+    load_completed_keys,
+    save_completed_keys,
+)
 
 
 def _package(root: Path, name: str, source_url: str, sku: str) -> Path:
@@ -43,6 +48,14 @@ def test_rejects_duplicate_product_identity(tmp_path: Path) -> None:
 
     with pytest.raises(BuymaDraftError, match="Duplicate listing package"):
         discover_batch_items(tmp_path)
+
+
+def test_discovers_only_packages_in_explicit_queue(tmp_path: Path) -> None:
+    included = _package(tmp_path, "included", "https://example.com/1", "SKU1")
+    _package(tmp_path, "unrelated", "https://example.com/2", "SKU2")
+    queue = tmp_path / "queue.json"
+    queue.write_text(json.dumps({"packages": [str(included)]}), encoding="utf-8")
+    assert [item.sku for item in discover_queued_batch_items(queue)] == ["SKU1"]
 
 
 def test_progress_round_trip_is_atomic(tmp_path: Path) -> None:
