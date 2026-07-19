@@ -154,7 +154,7 @@ def _wait_for_react_option(page: Page, value: str) -> Locator:
             if candidate.is_visible():
                 return candidate
         page.wait_for_timeout(250)
-    raise BuymaDraftError(f"BUYMA category option did not appear: {value}")
+    raise BuymaDraftError(f"BUYMA option did not appear: {value}")
 
 
 def _open_react_select(page: Page, control: Locator) -> None:
@@ -239,11 +239,12 @@ def _fill_sizes(
             references = row.locator("select, [role='combobox']")
             if references.count():
                 reference = references.last
+                reference_label = _reference_size_label(size)
                 if reference.evaluate("element => element.tagName") == "SELECT":
-                    reference.select_option(label=size)
+                    reference.select_option(label=reference_label)
                 else:
                     _open_react_select(page, reference)
-                    _safe_click(page, _wait_for_react_option(page, size))
+                    _safe_click(page, _wait_for_react_option(page, reference_label))
     if notes:
         textareas = section.locator("textarea")
         if textareas.count():
@@ -256,6 +257,15 @@ def _select_control_label(page: Page, control: Locator, value: str) -> None:
     else:
         _open_react_select(page, control)
         _safe_click(page, _wait_for_react_option(page, value))
+
+
+def _reference_size_label(source_size: str) -> str:
+    normalized = source_size.strip().upper()
+    if normalized in {"XL", "XXL", "XXXL"}:
+        return "XL以上"
+    if normalized in {"XXS", "XS"}:
+        return "XS以下"
+    return normalized
 
 
 def _fill_purchase_and_price(page: Page, payload: dict) -> None:
