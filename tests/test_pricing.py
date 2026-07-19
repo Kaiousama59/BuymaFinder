@@ -52,6 +52,14 @@ def test_pricing_uses_regular_price_when_sale_price_is_unavailable() -> None:
     assert result.purchase_cost_jpy == Decimal("10300")
 
 
+def test_pricing_waives_international_shipping_above_source_threshold() -> None:
+    settings = replace(_settings(), free_international_shipping_threshold_source=Decimal("500"))
+    engine = PricingEngine(settings)
+
+    assert engine.price_product(_product(regular_price=Decimal("500"))).international_shipping_jpy == Decimal("200")
+    assert engine.price_product(_product(regular_price=Decimal("500.01"))).international_shipping_jpy == Decimal("0")
+
+
 def test_pricing_includes_each_cost_once_and_uses_category_import_rate() -> None:
     clothing = PricingEngine(_settings()).price_product(_product("Clothing"))
     footwear = PricingEngine(_settings()).price_product(_product("Footwear"))

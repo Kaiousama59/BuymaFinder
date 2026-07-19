@@ -54,7 +54,12 @@ class PricingEngine:
         exchange_rate = self.settings.exchange_rates[source_currency]
         adjusted_exchange_rate = exchange_rate * (Decimal("1") + self.settings.exchange_rate_safety_margin)
         purchase_cost_jpy = _round_up_jpy(source_price * adjusted_exchange_rate)
-        international_shipping_jpy = self.settings.international_shipping_jpy
+        free_shipping_threshold = self.settings.free_international_shipping_threshold_source
+        international_shipping_jpy = (
+            Decimal("0")
+            if free_shipping_threshold is not None and source_price > free_shipping_threshold
+            else self.settings.international_shipping_jpy
+        )
         taxable_base_jpy = purchase_cost_jpy + international_shipping_jpy
         estimated_import_cost_jpy = _round_up_jpy(taxable_base_jpy * import_rate)
         pre_buyma_cost_jpy = (

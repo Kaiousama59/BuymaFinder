@@ -1,18 +1,21 @@
 {
+  "exchange_rate_reference_date": "2026-07-17",
+  "pricing_basis": "Eleonora Japan DDP; EUR 20 shipping, free above EUR 500",
   "exchange_rates": {
-    "EUR": null
+    "EUR": 185.65
   },
   "target_profit_margin": 0.10,
   "exchange_rate_safety_margin": 0.03,
-  "international_shipping_jpy": null,
-  "domestic_shipping_jpy": null,
-  "packing_cost_jpy": null,
-  "buyma_fee_rate": null,
+  "international_shipping_jpy": 3825,
+  "free_international_shipping_threshold_source": 500,
+  "domestic_shipping_jpy": 300,
+  "packing_cost_jpy": 100,
+  "buyma_fee_rate": 0.077,
   "estimated_import_cost_rates": {
-    "Clothing": null,
-    "Footwear": null,
-    "Accessories": null,
-    "Bags": null
+    "Clothing": 0,
+    "Footwear": 0,
+    "Accessories": 0,
+    "Bags": 0
   },
-  "listing_price_rounding_increment_jpy": null
+  "listing_price_rounding_increment_jpy": 100
 }

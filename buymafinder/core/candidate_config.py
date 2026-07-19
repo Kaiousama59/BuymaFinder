@@ -18,6 +18,10 @@ def load_candidate_settings(path: Path) -> CandidateSettings:
             require_description=bool(payload.get("require_description", True)),
             require_sizes=bool(payload.get("require_sizes", True)),
             maximum_source_price=None if maximum in (None, "") else Decimal(str(maximum)),
+            minimum_profit_margin=Decimal(str(payload.get("minimum_profit_margin", "0.10"))),
+            allowed_categories=(
+                None if payload.get("allowed_categories") is None else list(payload["allowed_categories"])
+            ),
         )
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, InvalidOperation) as error:
         raise ValueError(f"Invalid candidate configuration: {path}") from error

@@ -66,13 +66,18 @@ BuymaFinder/
 
 ## Pricing configuration
 
-Pricing is disabled until explicit production values are supplied. Create a local configuration file manually:
+Pricing is disabled until explicit production values are supplied. The example
+contains the verified Eleonora Japan DDP basis as of 2026-07-19: ECB EUR/JPY
+185.65 (2026-07-17), 3% exchange buffer, EUR 20 international shipping converted
+to JPY, free source shipping above EUR 500, 7.7% BUYMA fee, 10% target margin,
+JPY 100 packing, and no separate import charge under DDP. Create the local file:
 
 ```bash
 cp config/pricing.example.json config/pricing.json
 ```
 
-`config/pricing.json` is ignored by Git and must contain verified exchange, shipping, fee, import-cost-rate, and rounding values. The engine never invents missing monetary values.
+`config/pricing.json` is ignored by Git. Review the exchange rate before each
+production run. The engine never invents missing monetary values.
 
 ## Prepare one reviewed BUYMA draft package
 
@@ -135,18 +140,24 @@ confirmation button.
 
 ## Select products from preferred brands
 
-Candidate selection is separate from draft preparation and never invents profit.
-Copy and review the explicit brand preferences, then create a CSV review queue:
+Candidate selection is separate from draft preparation. It now requires the
+validated pricing configuration and exports only products meeting the configured
+10% minimum expected profit margin. Copy and review the explicit settings:
 
 ```bash
 cp config/candidates.example.json config/candidates.json
+cp config/pricing.example.json config/pricing.json
 python select_listing_candidates.py \
   --products-csv output/eleonora_products.csv
 ```
 
-Only in-stock products with the configured minimum images, a description, and
-an available size are included. The output `output/listing_candidates.csv`
-starts with a blank `approved` field and `review_required` status. Brand order
+Only in-stock products with the configured category, minimum images, a description,
+an available size, and a complete verified price are included. Until package-size
+shipping rules are configured, the example intentionally permits only Clothing
+at the verified JPY 300 domestic shipping cost. The output
+`output/listing_candidates.csv` starts with a blank `approved` field and
+`price_verified_review_required` status, plus the suggested listing price,
+estimated costs, expected profit, and margin. Brand order
 comes only from the local configuration and can be updated as demand changes.
 Products already present under `~/Desktop/BUYMA/ListingImages` are excluded by
 normalized source URL and SKU to prevent duplicate drafts.

@@ -10,6 +10,7 @@ from buymafinder.services.candidate_selector import (
     select_listing_candidates,
 )
 from buymafinder.services.product_csv_loader import load_products
+from buymafinder.services.pricing import apply_pricing
 
 
 def main() -> int:
@@ -17,6 +18,7 @@ def main() -> int:
     parser.add_argument("--products-csv", type=Path, default=Path("output/eleonora_products.csv"))
     parser.add_argument("--config", type=Path, default=Path("config/candidates.json"))
     parser.add_argument("--output", type=Path, default=Path("output/listing_candidates.csv"))
+    parser.add_argument("--pricing-config", type=Path, default=Path("config/pricing.json"))
     parser.add_argument(
         "--package-root",
         type=Path,
@@ -27,6 +29,12 @@ def main() -> int:
 
     products = load_products(args.products_csv)
     settings = load_candidate_settings(args.config)
+    configured_categories = {"Clothing", "Footwear", "Accessories", "Bags"}
+    apply_pricing(
+        products,
+        args.pricing_config,
+        sorted(configured_categories | {product.category for product in products}),
+    )
     excluded = load_existing_listing_identities(args.package_root)
     candidates = select_listing_candidates(products, settings, excluded_identities=excluded)
     export_listing_candidates(candidates, args.output)

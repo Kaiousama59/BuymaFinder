@@ -65,6 +65,9 @@ def _validate_settings(raw_settings: dict[str, Any], source_categories: list[str
     buyma_fee_rate = _percentage(raw_settings, "buyma_fee_rate", missing_keys, invalid_keys)
     import_cost_rates = _category_rates(raw_settings, source_categories, missing_keys, invalid_keys)
     rounding_increment = _rounding_increment(raw_settings, missing_keys, invalid_keys)
+    free_shipping_threshold = _optional_non_negative_amount(
+        raw_settings, "free_international_shipping_threshold_source", invalid_keys
+    )
 
     if target_profit_margin is not None and buyma_fee_rate is not None:
         if buyma_fee_rate + target_profit_margin >= Decimal("1"):
@@ -82,6 +85,7 @@ def _validate_settings(raw_settings: dict[str, Any], source_categories: list[str
         buyma_fee_rate=buyma_fee_rate,
         estimated_import_cost_rates=import_cost_rates,
         listing_price_rounding_increment_jpy=rounding_increment,
+        free_international_shipping_threshold_source=free_shipping_threshold,
     )
 
 
@@ -135,6 +139,18 @@ def _non_negative_amount(
         invalid_keys.append(key)
     elif value < 0:
         invalid_keys.append(key)
+    return value
+
+
+def _optional_non_negative_amount(
+    raw_settings: dict[str, Any], key: str, invalid_keys: list[str]
+) -> Decimal | None:
+    if key not in raw_settings or raw_settings[key] is None:
+        return None
+    value = _decimal(raw_settings[key])
+    if value is None or value < 0:
+        invalid_keys.append(key)
+        return None
     return value
 
 

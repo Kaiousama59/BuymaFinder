@@ -18,6 +18,7 @@ class PricingSettings:
     buyma_fee_rate: Decimal
     estimated_import_cost_rates: dict[str, Optional[Decimal]]
     listing_price_rounding_increment_jpy: int
+    free_international_shipping_threshold_source: Optional[Decimal] = None
 
 
 @dataclass(frozen=True, slots=True)

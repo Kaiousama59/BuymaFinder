@@ -47,6 +47,7 @@ def test_incomplete_pricing_configuration_reports_missing_keys(tmp_path: Path) -
         ({"estimated_import_cost_rates": {"Unknown": 0.1}}, "estimated_import_cost_rates.Unknown"),
         ({"exchange_rates": {"EUR": 100, "USD": 1}}, "exchange_rates.USD"),
         ({"listing_price_rounding_increment_jpy": 1.5}, "listing_price_rounding_increment_jpy"),
+        ({"free_international_shipping_threshold_source": -1}, "free_international_shipping_threshold_source"),
     ],
 )
 def test_invalid_pricing_configuration_is_rejected(

@@ -10,5 +10,7 @@
   "minimum_images": 2,
   "require_description": true,
   "require_sizes": true,
+  "minimum_profit_margin": 0.10,
+  "allowed_categories": ["Clothing"],
   "maximum_source_price": null
 }
