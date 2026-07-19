@@ -410,21 +410,70 @@ def _fill_purchase_deadline(page: Page, days: int) -> None:
         field.press("Tab")
     except PlaywrightTimeoutError:
         pass
-    if field.input_value() != value:
-        field.evaluate(
-            """(element, nextValue) => {
-                const setter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                ).set;
-                setter.call(element, nextValue);
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new Event('change', { bubbles: true }));
-                element.blur();
-            }""",
-            value,
-        )
-    if field.input_value() != value:
+    if _normalized_date(field.input_value()) != _normalized_date(value):
+        _select_latest_calendar_date(page, field)
+    if _normalized_date(field.input_value()) != _normalized_date(value):
         raise BuymaDraftError(f"BUYMA purchase deadline was not accepted: {value}")
+
+
+def _normalized_date(value: str) -> str:
+    return value.replace("-", "/").lstrip("0")
+
+
+def _select_latest_calendar_date(page: Page, field: Locator) -> None:
+    field.click()
+    page.wait_for_timeout(300)
+    calendar_selectors = (
+        ".react-datepicker:visible",
+        ".ui-datepicker:visible",
+        "[class*='calendar']:visible",
+        "[class*='Calendar']:visible",
+    )
+    calendar: Locator | None = None
+    for selector in calendar_selectors:
+        candidates = page.locator(selector)
+        if candidates.count():
+            calendar = candidates.last
+            break
+    if calendar is None:
+        raise BuymaDraftError("BUYMA purchase-deadline calendar did not appear")
+
+    next_selectors = (
+        "button[aria-label*='次']",
+        "button[aria-label*='Next' i]",
+        ".react-datepicker__navigation--next",
+        ".ui-datepicker-next",
+    )
+    for _ in range(6):
+        next_button: Locator | None = None
+        for selector in next_selectors:
+            matches = calendar.locator(selector)
+            if matches.count() and matches.first.is_visible():
+                next_button = matches.first
+                break
+        if next_button is None:
+            break
+        disabled = next_button.is_disabled() or next_button.get_attribute("aria-disabled") == "true"
+        classes = next_button.get_attribute("class") or ""
+        if disabled or "disabled" in classes.lower():
+            break
+        _safe_click(page, next_button)
+        page.wait_for_timeout(250)
+
+    day_selectors = (
+        ".react-datepicker__day:not(.react-datepicker__day--disabled):not(.react-datepicker__day--outside-month)",
+        "td:not(.ui-datepicker-unselectable) a",
+        "[role='gridcell']:not([aria-disabled='true']) button",
+        "button[data-date]:not([disabled])",
+    )
+    for selector in day_selectors:
+        days = calendar.locator(selector)
+        visible_days = [days.nth(index) for index in range(days.count()) if days.nth(index).is_visible()]
+        if visible_days:
+            _safe_click(page, visible_days[-1])
+            page.wait_for_timeout(300)
+            return
+    raise BuymaDraftError("BUYMA calendar had no selectable purchase-deadline date")
 
 
 def _fill_supplier_memo(page: Page, supplier: str, source_url: str) -> None:

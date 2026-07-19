@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from buymafinder.services.buyma_draft_filler import BuymaDraftError, _reference_size_label, assert_safe_buyma_page, load_listing_package
+from buymafinder.services.buyma_draft_filler import BuymaDraftError, _normalized_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
 
 
 class FakePage:
@@ -40,3 +40,7 @@ def test_package_loader_requires_downloaded_images(tmp_path: Path) -> None:
 @pytest.mark.parametrize(("source", "expected"), [("S", "S"), ("M", "M"), ("L", "L"), ("XL", "XL以上"), ("XS", "XS以下")])
 def test_reference_size_uses_buyma_boundary_labels(source: str, expected: str) -> None:
     assert _reference_size_label(source) == expected
+
+
+def test_date_comparison_accepts_browser_date_separator() -> None:
+    assert _normalized_date("2026-10-17") == _normalized_date("2026/10/17")
