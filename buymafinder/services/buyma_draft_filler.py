@@ -257,14 +257,32 @@ def _select_color(page: Page, family: str, name: str) -> None:
         return
     control = controls.first
     if control.evaluate("element => element.tagName") == "SELECT":
-        control.select_option(label=family)
+        _select_color_family_option(control, family)
     else:
         _open_react_select(page, control)
-        _safe_click(page, page.get_by_text(family, exact=True).last)
+        # BUYMA labels families like "ブラック（黒）系"; match by prefix, not exact
+        # text, so configured "ブラック" still finds the option.
+        option = page.get_by_text(family, exact=True)
+        if option.count() == 0:
+            option = page.get_by_text(re.compile(rf"^{re.escape(family)}"))
+        if option.count() == 0:
+            raise BuymaDraftError(f"BUYMA color family option was not found: {family}")
+        _safe_click(page, option.last)
     if name:
         text_inputs = section.locator("input[type='text']")
         if text_inputs.count():
             text_inputs.last.fill(name)
+
+
+def _select_color_family_option(control: Locator, family: str) -> None:
+    options = control.locator("option")
+    for index in range(options.count()):
+        option = options.nth(index)
+        if option.inner_text().strip().startswith(family):
+            value = option.get_attribute("value")
+            control.select_option(value=value)
+            return
+    raise BuymaDraftError(f"BUYMA color family option was not found: {family}")
 
 
 def _fill_sizes(
