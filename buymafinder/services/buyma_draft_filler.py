@@ -70,7 +70,7 @@ def fill_buyma_draft(
         size_variation=settings.get("size_variation", True),
         size_unit=settings.get("size_unit", "cm"),
     )
-    _select_shipping(page, settings["shipping_method"])
+    _select_shipping(page, settings["shipping_method"], settings.get("buyer_shipping_jpy"))
     _fill_purchase_and_price(page, payload)
     _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
     _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
@@ -539,14 +539,26 @@ def _fill_size_inventory(
     )
 
 
-def _select_shipping(page: Page, method: str) -> None:
+def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = None) -> None:
     section = _section(page, "配送方法")
     option = section.get_by_text(method, exact=True)
     if option.count() == 0:
         raise BuymaDraftError(
             f"Saved BUYMA shipping method was not found: {method}. Add it once in BUYMA and run again."
         )
-    row = option.first.locator("xpath=ancestor::*[self::tr or self::div][.//input[@type='checkbox']][1]")
+    row: Locator | None = None
+    for index in range(option.count()):
+        candidate = option.nth(index).locator(
+            "xpath=ancestor::*[self::tr or self::div][.//input[@type='checkbox']][1]"
+        )
+        if candidate.count() and (
+            buyer_shipping_jpy is None or _contains_yen_price(candidate.inner_text(), buyer_shipping_jpy)
+        ):
+            row = candidate
+            break
+    if row is None:
+        price = "" if buyer_shipping_jpy is None else f" at ¥{buyer_shipping_jpy}"
+        raise BuymaDraftError(f"Saved BUYMA shipping method was not found: {method}{price}")
     checkbox = row.locator("input[type='checkbox']")
     if checkbox.count():
         target = checkbox.first
@@ -559,6 +571,11 @@ def _select_shipping(page: Page, method: str) -> None:
             raise BuymaDraftError(f"BUYMA shipping method could not be selected: {method}")
     else:
         option.first.click()
+
+
+def _contains_yen_price(text: str, amount: int) -> bool:
+    normalized = text.replace(",", "").replace(" ", "")
+    return f"¥{amount}" in normalized or f"{amount}円" in normalized
 
 
 def _check_label(page: Page, label: str, occurrence: int) -> None:
