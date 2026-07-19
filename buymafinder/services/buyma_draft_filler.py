@@ -69,6 +69,7 @@ def fill_buyma_draft(
         settings.get("size_notes", ""),
         size_variation=settings.get("size_variation", True),
         size_unit=settings.get("size_unit", "cm"),
+        category_path=settings.get("buyma_category_path", []),
     )
     _select_shipping(page, settings["shipping_method"], settings.get("buyer_shipping_jpy"))
     _fill_purchase_and_price(page, payload)
@@ -260,6 +261,7 @@ def _fill_sizes(
     *,
     size_variation: bool,
     size_unit: str,
+    category_path: list[str],
 ) -> None:
     section = _section(page, "色・サイズ")
     tab = section.get_by_text("サイズ", exact=True)
@@ -287,12 +289,30 @@ def _fill_sizes(
             references = row.locator("select, [role='combobox']")
             if references.count():
                 reference = references.last
-                reference_label = _reference_size_label(size)
+                reference_label = _reference_size_label(size, category_path)
                 if reference.evaluate("element => element.tagName") == "SELECT":
-                    reference.select_option(label=reference_label)
+                    try:
+                        reference.select_option(label=reference_label)
+                    except PlaywrightTimeoutError:
+                        logging.warning(
+                            "BUYMA reference size %r was unavailable for source size %r; using unspecified",
+                            reference_label,
+                            size,
+                        )
+                        reference.select_option(label="指定なし")
                 else:
                     _open_react_select(page, reference)
-                    _safe_click(page, _wait_for_react_option(page, reference_label))
+                    try:
+                        option = _wait_for_react_option(page, reference_label)
+                    except BuymaDraftError:
+                        logging.warning(
+                            "BUYMA reference size %r was unavailable for source size %r; using unspecified",
+                            reference_label,
+                            size,
+                        )
+                        _open_react_select(page, reference)
+                        option = _wait_for_react_option(page, "指定なし")
+                    _safe_click(page, option)
     if notes:
         textareas = section.locator("textarea")
         if textareas.count():
@@ -332,12 +352,27 @@ def _select_control_label(page: Page, control: Locator, value: str) -> None:
         page.wait_for_timeout(500)
 
 
-def _reference_size_label(source_size: str) -> str:
+def _reference_size_label(source_size: str, category_path: list[str] | None = None) -> str:
     normalized = source_size.strip().upper()
     if normalized in {"XL", "XXL", "XXXL"}:
         return "XL以上"
     if normalized in {"XXS", "XS"}:
         return "XS以下"
+    category = " / ".join(category_path or [])
+    if normalized.isdigit() and not any(term in category for term in ("靴", "シューズ", "ブーツ")):
+        italian_size = int(normalized)
+        if 34 <= italian_size <= 60 and italian_size % 2 == 0:
+            if italian_size <= 38:
+                return "XS以下"
+            if italian_size == 40:
+                return "S"
+            if italian_size == 42:
+                return "M"
+            if italian_size == 44:
+                return "L"
+            return "XL以上"
+    if normalized.isdigit():
+        return "指定なし"
     return normalized
 
 
