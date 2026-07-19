@@ -21,6 +21,13 @@ class BuymaDraftError(RuntimeError):
     pass
 
 
+class ShippingNotAvailableError(BuymaDraftError):
+    """Raised when none of the configured shipping methods exist on the form.
+
+    Callers should catch this, skip the product, and continue with the rest.
+    """
+
+
 def load_listing_package(folder: Path) -> dict:
     path = folder / "listing_data.json"
     try:
@@ -73,7 +80,11 @@ def fill_buyma_draft(
         size_unit=settings.get("size_unit", "cm"),
         category_path=settings.get("buyma_category_path", []),
     )
-    _select_shipping(page, settings["shipping_method"], settings.get("buyer_shipping_jpy"))
+    _select_shipping_methods(
+        page,
+        settings.get("shipping_methods") or [settings["shipping_method"]],
+        settings.get("buyer_shipping_jpy"),
+    )
     _fill_purchase_and_price(page, payload)
     _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
     _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
@@ -576,8 +587,55 @@ def _fill_size_inventory(
     )
 
 
-def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = None) -> None:
+def _select_shipping_methods(
+    page: Page,
+    methods: list[str],
+    buyer_shipping_jpy: int | None = None,
+) -> None:
+    """Check every configured shipping method that exists on the form.
+
+    BUYMA allows multiple shipping methods per listing, so all configured
+    methods found on the form are checked. Methods missing from the form are
+    logged and skipped. Raises ShippingNotAvailableError only when none of
+    the configured methods exist, so callers can skip the product.
+    """
     section = _section(page, "配送方法")
+    checkboxes = section.locator("input[type='checkbox']")
+    try:
+        checkboxes.first.wait_for(state="attached", timeout=15_000)
+    except Exception:
+        raise ShippingNotAvailableError(
+            "The shipping section rendered no checkboxes within 15s."
+        )
+
+    selected: list[str] = []
+    missing: list[str] = []
+    for method_number, method in enumerate(methods):
+        price = buyer_shipping_jpy if method_number == 0 else None
+        if _try_select_shipping(page, section, method, price):
+            selected.append(method)
+        else:
+            missing.append(method)
+
+    if missing:
+        logging.warning(
+            "Shipping methods not shown on this form and skipped: %s", missing
+        )
+    if not selected:
+        available = _available_shipping_texts(section)
+        raise ShippingNotAvailableError(
+            "None of the configured shipping methods were found. "
+            f"Tried: {methods}. Methods displayed on this form: {available}"
+        )
+    logging.info("Selected shipping methods: %s", selected)
+
+
+def _try_select_shipping(
+    page: Page,
+    section: Locator,
+    method: str,
+    buyer_shipping_jpy: int | None,
+) -> bool:
     checkboxes = section.locator("input[type='checkbox']")
     target: Locator | None = None
     shortest_matching_container: int | None = None
@@ -606,8 +664,7 @@ def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = N
             " ".join(displayed_text.split()),
         )
     if target is None:
-        price = "" if buyer_shipping_jpy is None else f" at ¥{buyer_shipping_jpy}"
-        raise BuymaDraftError(f"Saved BUYMA shipping method was not found: {method}{price}")
+        return False
     if not target.is_checked():
         if target.is_visible():
             target.check()
@@ -615,6 +672,23 @@ def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = N
             target.evaluate("element => element.click()")
     if not target.is_checked():
         raise BuymaDraftError(f"BUYMA shipping method could not be selected: {method}")
+    return True
+
+
+def _available_shipping_texts(section: Locator) -> list[str]:
+    """Return the visible shipping method labels for diagnostics."""
+    texts: list[str] = []
+    checkboxes = section.locator("input[type='checkbox']")
+    for checkbox_index in range(checkboxes.count()):
+        checkbox = checkboxes.nth(checkbox_index)
+        row = checkbox.locator("xpath=ancestor::*[self::tr or self::div][1]")
+        try:
+            text = " ".join(row.inner_text().split())
+        except Exception:
+            continue
+        if text and text not in texts:
+            texts.append(text[:120])
+    return texts
 
 
 def _shipping_method_matches(display_text: str, configured_method: str) -> bool:
