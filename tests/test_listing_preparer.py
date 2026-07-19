@@ -57,3 +57,8 @@ def test_load_product_by_url_rebuilds_exported_row(tmp_path: Path) -> None:
 def test_listing_settings_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="arrival_days"):
         ListingSettings("title", "description", ["a"], "white", "white", 1, 0, "shipping", 21, 14)
+
+
+def test_listing_settings_rejects_deadline_over_buyma_limit() -> None:
+    with pytest.raises(ValueError, match="purchase_deadline_days"):
+        ListingSettings("title", "description", ["a"], "white", "white", 1, 0, "shipping", 14, 21, purchase_deadline_days=91)

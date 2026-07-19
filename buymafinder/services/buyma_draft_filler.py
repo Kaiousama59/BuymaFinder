@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -58,9 +59,16 @@ def fill_buyma_draft(
     _select_category(page, settings["buyma_category_path"])
     _select_brand(page, payload["brand"])
     _select_color(page, settings["color_family"], settings.get("color_name", ""))
-    _fill_sizes(page, payload.get("source_sizes", []), settings.get("size_notes", ""))
+    _fill_sizes(
+        page,
+        payload.get("source_sizes", []),
+        settings.get("size_notes", ""),
+        size_variation=settings.get("size_variation", True),
+        size_unit=settings.get("size_unit", "cm"),
+    )
     _select_shipping(page, settings["shipping_method"])
     _fill_purchase_and_price(page, payload)
+    _fill_purchase_deadline(page, settings.get("purchase_deadline_days", 90))
     _fill_near(page, "出品メモ", "textarea", settings.get("private_memo", ""), required=False)
 
     if save_draft:
@@ -197,11 +205,27 @@ def _select_color(page: Page, family: str, name: str) -> None:
             text_inputs.last.fill(name)
 
 
-def _fill_sizes(page: Page, sizes: list[str], notes: str) -> None:
+def _fill_sizes(
+    page: Page,
+    sizes: list[str],
+    notes: str,
+    *,
+    size_variation: bool,
+    size_unit: str,
+) -> None:
     section = _section(page, "色・サイズ")
     tab = section.get_by_text("サイズ", exact=True)
     if tab.count():
         tab.first.click()
+    comboboxes = section.locator("select:visible, [role='combobox']:visible")
+    if comboboxes.count():
+        _select_control_label(page, comboboxes.first, "バリエーションあり" if size_variation else "バリエーションなし")
+    if size_variation:
+        for _ in range(20):
+            if comboboxes.count() > 1:
+                _select_control_label(page, comboboxes.nth(1), size_unit)
+                break
+            page.wait_for_timeout(250)
     for index, size in enumerate(sizes):
         inputs = section.locator("input[type='text']")
         if index >= inputs.count():
@@ -211,22 +235,63 @@ def _fill_sizes(page: Page, sizes: list[str], notes: str) -> None:
                 inputs = section.locator("input[type='text']")
         if index < inputs.count():
             inputs.nth(index).fill(size)
+            row = inputs.nth(index).locator("xpath=ancestor::*[self::tr or self::div][.//*[@role='combobox'] or .//select][1]")
+            references = row.locator("select, [role='combobox']")
+            if references.count():
+                reference = references.last
+                if reference.evaluate("element => element.tagName") == "SELECT":
+                    reference.select_option(label=size)
+                else:
+                    _open_react_select(page, reference)
+                    _safe_click(page, _wait_for_react_option(page, size))
     if notes:
         textareas = section.locator("textarea")
         if textareas.count():
             textareas.last.fill(notes)
 
 
+def _select_control_label(page: Page, control: Locator, value: str) -> None:
+    if control.evaluate("element => element.tagName") == "SELECT":
+        control.select_option(label=value)
+    else:
+        _open_react_select(page, control)
+        _safe_click(page, _wait_for_react_option(page, value))
+
+
 def _fill_purchase_and_price(page: Page, payload: dict) -> None:
     settings = payload["settings"]
     _check_label(page, "海外" if settings["purchasing_location"] == "overseas" else "国内", occurrence=0)
+    _select_location_value(page, "買付地", settings.get("buying_country", "イタリア"))
     _fill_near(page, "買付先ショップ名", "input", payload["supplier"][:30], required=False)
     _check_label(page, "国内" if settings["shipping_location"] == "domestic" else "海外", occurrence=-1)
+    _select_location_value(page, "発送地", settings.get("shipping_prefecture", "神奈川県"))
     _fill_near(page, "商品価格", "input", str(settings["listing_price_jpy"]))
     if settings.get("duties_included"):
         checkbox = page.get_by_text("関税込み（購入者の関税負担なし）", exact=False)
         if checkbox.count():
             checkbox.first.click()
+
+
+def _select_location_value(page: Page, section_title: str, value: str) -> None:
+    section = _section(page, section_title)
+    controls = section.locator("select, [role='combobox']")
+    for _ in range(40):
+        if controls.count() and controls.last.is_visible():
+            break
+        page.wait_for_timeout(250)
+    else:
+        raise BuymaDraftError(f"BUYMA location selector did not appear: {section_title}")
+    control = controls.last
+    if control.evaluate("element => element.tagName") == "SELECT":
+        control.select_option(label=value)
+    else:
+        _open_react_select(page, control)
+        _safe_click(page, _wait_for_react_option(page, value))
+
+
+def _fill_purchase_deadline(page: Page, days: int) -> None:
+    deadline = date.today() + timedelta(days=days)
+    _fill_near(page, "購入期限(日本時間)", "input", deadline.strftime("%Y/%m/%d"))
 
 
 def _select_shipping(page: Page, method: str) -> None:

@@ -24,6 +24,12 @@ class ListingSettings:
     on_hand_quantity: int = 0
     private_memo: str = ""
     size_notes: str = ""
+    purchase_deadline_days: int = 90
+    buying_country: str = "イタリア"
+    shipping_prefecture: str = "神奈川県"
+    size_variation: bool = True
+    size_unit: str = "cm"
+    description_source_url: str = ""
 
     def __post_init__(self) -> None:
         required_text = {
@@ -43,6 +49,10 @@ class ListingSettings:
             invalid.append("arrival_days")
         if self.purchasable_quantity <= 0 or self.on_hand_quantity < 0:
             invalid.append("quantity")
+        if not (1 <= self.purchase_deadline_days <= 90):
+            invalid.append("purchase_deadline_days")
+        if not self.buying_country.strip() or not self.shipping_prefecture.strip():
+            invalid.append("location")
         if invalid:
             raise ValueError(f"Invalid listing settings: {', '.join(sorted(set(invalid)))}")
 
