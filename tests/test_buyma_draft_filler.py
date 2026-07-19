@@ -7,7 +7,7 @@ import pytest
 
 from datetime import date
 
-from buymafinder.services.buyma_draft_filler import BuymaDraftError, _contains_yen_price, _normalized_date, _purchase_deadline_date, _reference_size_label, assert_safe_buyma_page, load_listing_package
+from buymafinder.services.buyma_draft_filler import BuymaDraftError, _contains_yen_price, _normalized_date, _purchase_deadline_date, _reference_size_label, _shipping_method_matches, assert_safe_buyma_page, load_listing_package
 
 
 class FakePage:
@@ -68,3 +68,25 @@ def test_buyma_deadline_counts_today_as_day_one() -> None:
 def test_shipping_price_match_ignores_display_format(text: str) -> None:
     expected = 1250 if "1,250" in text else 800
     assert _contains_yen_price(text, expected)
+
+
+@pytest.mark.parametrize(
+    ("display_text", "configured_method"),
+    [
+        ("かんたんBUYMA便 【匿名配送】\nゆうパケット", "かんたんBUYMA便【匿名配送】 - ゆうパケット"),
+        ("日本郵便 - ゆうパック 60サイズ", "かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ"),
+        ("かんたんBUYMA便\nゆうパック 80サイズ", "かんたんBUYMA便【匿名配送】 - ゆうパック 80サイズ"),
+    ],
+)
+def test_shipping_method_match_tolerates_buyma_display_format(
+    display_text: str,
+    configured_method: str,
+) -> None:
+    assert _shipping_method_matches(display_text, configured_method)
+
+
+def test_shipping_method_match_does_not_confuse_yu_pack_sizes() -> None:
+    assert not _shipping_method_matches(
+        "日本郵便 - ゆうパック 80サイズ",
+        "かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ",
+    )
