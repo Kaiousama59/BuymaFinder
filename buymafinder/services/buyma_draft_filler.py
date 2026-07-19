@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
@@ -580,6 +581,7 @@ def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = N
     checkboxes = section.locator("input[type='checkbox']")
     target: Locator | None = None
     shortest_matching_container: int | None = None
+    method_candidates: dict[int, tuple[int, Locator, str]] = {}
     for checkbox_index in range(checkboxes.count()):
         checkbox = checkboxes.nth(checkbox_index)
         ancestors = checkbox.locator("xpath=ancestor::*[self::tr or self::div]")
@@ -587,12 +589,22 @@ def _select_shipping(page: Page, method: str, buyer_shipping_jpy: int | None = N
             text = ancestors.nth(ancestor_index).inner_text()
             if not _shipping_method_matches(text, method):
                 continue
+            container_length = len(text)
+            previous = method_candidates.get(checkbox_index)
+            if previous is None or container_length < previous[0]:
+                method_candidates[checkbox_index] = (container_length, checkbox, text)
             if buyer_shipping_jpy is not None and not _contains_yen_price(text, buyer_shipping_jpy):
                 continue
-            container_length = len(text)
             if shortest_matching_container is None or container_length < shortest_matching_container:
                 target = checkbox
                 shortest_matching_container = container_length
+    if target is None and len(method_candidates) == 1:
+        _, target, displayed_text = next(iter(method_candidates.values()))
+        logging.warning(
+            "BUYMA did not display configured shipping price ¥%s; selected the sole matching method: %s",
+            buyer_shipping_jpy,
+            " ".join(displayed_text.split()),
+        )
     if target is None:
         price = "" if buyer_shipping_jpy is None else f" at ¥{buyer_shipping_jpy}"
         raise BuymaDraftError(f"Saved BUYMA shipping method was not found: {method}{price}")
@@ -627,8 +639,8 @@ def _normalized_shipping_text(text: str) -> str:
 
 
 def _contains_yen_price(text: str, amount: int) -> bool:
-    normalized = text.replace(",", "").replace(" ", "")
-    return f"¥{amount}" in normalized or f"{amount}円" in normalized
+    normalized = unicodedata.normalize("NFKC", text).replace(",", "")
+    return re.search(rf"(?<!\d){amount}(?!\d)", normalized) is not None
 
 
 def _check_label(page: Page, label: str, occurrence: int) -> None:
