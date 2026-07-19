@@ -64,10 +64,14 @@ def test_buyma_deadline_counts_today_as_day_one() -> None:
     assert _purchase_deadline_date(date(2026, 7, 19), 90) == date(2026, 10, 16)
 
 
-@pytest.mark.parametrize("text", ["¥800", "¥ 800", "800円", "送料 ¥1,250"])
+@pytest.mark.parametrize("text", ["¥800", "¥ 800", "800円", "800", "送料 ¥1,250"])
 def test_shipping_price_match_ignores_display_format(text: str) -> None:
     expected = 1250 if "1,250" in text else 800
     assert _contains_yen_price(text, expected)
+
+
+def test_shipping_price_match_requires_the_complete_amount() -> None:
+    assert not _contains_yen_price("送料 ¥1,280", 280)
 
 
 @pytest.mark.parametrize(
