@@ -253,10 +253,35 @@ def _fill_sizes(
 
 def _select_control_label(page: Page, control: Locator, value: str) -> None:
     if control.evaluate("element => element.tagName") == "SELECT":
-        control.select_option(label=value)
+        options = control.locator("option")
+        matching_value: str | None = None
+        for index in range(options.count()):
+            option = options.nth(index)
+            if value in option.inner_text():
+                matching_value = option.get_attribute("value")
+                break
+        if matching_value is None:
+            raise BuymaDraftError(f"BUYMA location option did not appear: {value}")
+        control.select_option(value=matching_value)
     else:
         _open_react_select(page, control)
-        _safe_click(page, _wait_for_react_option(page, value))
+        visible = page.get_by_text(value, exact=True)
+        for index in range(visible.count()):
+            candidate = visible.nth(index)
+            if candidate.is_visible():
+                _safe_click(page, candidate)
+                return
+        search = control.locator("input")
+        if search.count():
+            search.first.fill(value)
+            search.first.press("ArrowDown")
+            search.first.press("Enter")
+        else:
+            control.focus()
+            page.keyboard.type(value)
+            page.keyboard.press("ArrowDown")
+            page.keyboard.press("Enter")
+        page.wait_for_timeout(500)
 
 
 def _reference_size_label(source_size: str) -> str:
