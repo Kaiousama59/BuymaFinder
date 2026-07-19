@@ -35,14 +35,18 @@ _PRODUCT_RULES = (
 _EASY_BUYMA_PACKET = ("かんたんBUYMA便【匿名配送】 - ゆうパケット", 280)
 _EASY_BUYMA_60 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ", 800)
 _EASY_BUYMA_80 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 80サイズ", 950)
+_EASY_BUYMA_100 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 100サイズ", 1100)
 
-_SHIPPING_BY_PRODUCT_TYPE = {
-    "コート": _EASY_BUYMA_80,
-    "トレンチコート": _EASY_BUYMA_80,
-    "レザージャケット": _EASY_BUYMA_80,
-    "ブルゾン": _EASY_BUYMA_60,
-    "ジャケット": _EASY_BUYMA_60,
-    "ワンピース": _EASY_BUYMA_60,
+# Multiple methods are checked on the form so the actual shipment can match
+# the real parcel size. The first entry defines buyer_shipping_jpy.
+_DEFAULT_SHIPPING_METHODS = (_EASY_BUYMA_PACKET, _EASY_BUYMA_60)
+_SHIPPING_METHODS_BY_PRODUCT_TYPE = {
+    "コート": (_EASY_BUYMA_80, _EASY_BUYMA_100),
+    "トレンチコート": (_EASY_BUYMA_80, _EASY_BUYMA_100),
+    "レザージャケット": (_EASY_BUYMA_80, _EASY_BUYMA_100),
+    "ブルゾン": (_EASY_BUYMA_60, _EASY_BUYMA_80),
+    "ジャケット": (_EASY_BUYMA_60, _EASY_BUYMA_80),
+    "ワンピース": (_EASY_BUYMA_60, _EASY_BUYMA_80),
 }
 
 
@@ -89,7 +93,9 @@ def listing_settings_for_candidate(
     expected_margin = _decimal(candidate, "expected_profit_margin")
     title = _title(product.brand, product_type, product.name)
     description = _description(product, product_type)
-    shipping_method, buyer_shipping = _SHIPPING_BY_PRODUCT_TYPE.get(product_type, _EASY_BUYMA_PACKET)
+    shipping_options = _SHIPPING_METHODS_BY_PRODUCT_TYPE.get(product_type, _DEFAULT_SHIPPING_METHODS)
+    shipping_method, buyer_shipping = shipping_options[0]
+    shipping_methods = [option[0] for option in shipping_options]
     source_price = product.current_price
     private_memo = (
         f"仕入先: {product.shop_name}\n"
@@ -109,6 +115,7 @@ def listing_settings_for_candidate(
         listing_price_jpy=listing_price,
         buyer_shipping_jpy=buyer_shipping,
         shipping_method=shipping_method,
+        shipping_methods=shipping_methods,
         private_memo=private_memo,
         size_notes=size_notes,
         description_source_url=product.product_url,

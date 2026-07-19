@@ -31,6 +31,7 @@ class ListingSettings:
     size_variation: bool = True
     size_unit: str = "cm"
     description_source_url: str = ""
+    shipping_methods: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         required_text = {
