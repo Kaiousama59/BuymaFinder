@@ -32,13 +32,17 @@ _PRODUCT_RULES = (
     (("TOP",), "トップス", ("レディースファッション", "トップス", "トップスその他")),
 )
 
+_EASY_BUYMA_PACKET = ("かんたんBUYMA便【匿名配送】 - ゆうパケット", 280)
+_EASY_BUYMA_60 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ", 800)
+_EASY_BUYMA_80 = ("かんたんBUYMA便【匿名配送】 - ゆうパック 80サイズ", 950)
+
 _SHIPPING_BY_PRODUCT_TYPE = {
-    "コート": 950,
-    "トレンチコート": 950,
-    "レザージャケット": 950,
-    "ブルゾン": 800,
-    "ジャケット": 800,
-    "ワンピース": 800,
+    "コート": _EASY_BUYMA_80,
+    "トレンチコート": _EASY_BUYMA_80,
+    "レザージャケット": _EASY_BUYMA_80,
+    "ブルゾン": _EASY_BUYMA_60,
+    "ジャケット": _EASY_BUYMA_60,
+    "ワンピース": _EASY_BUYMA_60,
 }
 
 
@@ -85,7 +89,7 @@ def listing_settings_for_candidate(
     expected_margin = _decimal(candidate, "expected_profit_margin")
     title = _title(product.brand, product_type, product.name)
     description = _description(product, product_type)
-    buyer_shipping = _SHIPPING_BY_PRODUCT_TYPE.get(product_type, base.buyer_shipping_jpy)
+    shipping_method, buyer_shipping = _SHIPPING_BY_PRODUCT_TYPE.get(product_type, _EASY_BUYMA_PACKET)
     source_price = product.current_price
     private_memo = (
         f"仕入先: {product.shop_name}\n"
@@ -104,6 +108,7 @@ def listing_settings_for_candidate(
         color_name="",
         listing_price_jpy=listing_price,
         buyer_shipping_jpy=buyer_shipping,
+        shipping_method=shipping_method,
         private_memo=private_memo,
         size_notes=size_notes,
         description_source_url=product.product_url,
