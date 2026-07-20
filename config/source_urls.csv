@@ -1,5 +1,7 @@
 shop_code,shop_name,target,category,list_url,enabled
-eleonora,Eleonora Bonucci,women,Clothing,https://eleonorabonucci.com/en/women/new-collection/clothing/,1
-eleonora,Eleonora Bonucci,women,Footwear,https://eleonorabonucci.com/en/women/new-collection/footwear/,1
-eleonora,Eleonora Bonucci,women,Accessories,https://eleonorabonucci.com/en/women/new-collection/accessories/,1
-eleonora,Eleonora Bonucci,women,Bags,https://eleonorabonucci.com/en/women/new-collection/bags/,1
+eleonora,Eleonora Bonucci,women,Clothing,https://eleonorabonucci.com/en/women/new-collection/clothing/,0
+eleonora,Eleonora Bonucci,women,Footwear,https://eleonorabonucci.com/en/women/new-collection/footwear/,0
+eleonora,Eleonora Bonucci,women,Accessories,https://eleonorabonucci.com/en/women/new-collection/accessories/,0
+eleonora,Eleonora Bonucci,women,Bags,https://eleonorabonucci.com/en/women/new-collection/bags/,0
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/maison-margiela-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/balenciaga-women,1

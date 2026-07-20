@@ -144,13 +144,18 @@ def listing_settings_for_candidate(
     shipping_methods = [option[0] for option in shipping_options]
     source_price = product.current_price
     private_memo = (
+        f"品番: {product.sku}\n"
         f"仕入先: {product.shop_name}\n"
         f"仕入先URL: {product.product_url}\n"
         f"仕入価格: {product.currency} {format(source_price, 'f') if source_price is not None else '不明'}\n"
         f"想定利益: {expected_profit}円\n"
         f"想定利益率: {format(expected_margin, '.2%')}"
     )
-    size_notes = "仕入先で在庫確認できたサイズのみ買付可能として登録しています。注文前に在庫確認をお願いします。"
+    size_notes = (
+        "仕入先で在庫確認できたサイズのみ買付可能として登録しています。注文前に在庫確認をお願いします。"
+        "イタリア/ヨーロッパサイズ表記のため、同じ表記サイズでも日本サイズよりゆったりめに作られていることがあります。"
+        "ご不安な場合はお問い合わせください。"
+    )
     return replace(
         base,
         japanese_title=title,
@@ -235,8 +240,6 @@ def _description(product: Product, product_type: str) -> str:
         "",
         "【商品詳細】",
         details,
-        "",
-        f"品番：{product.sku}",
         "",
         "海外正規取扱店から買い付ける新品・正規品です。",
         "在庫は常に変動するため、ご注文前に在庫確認のお問い合わせをお願いいたします。",

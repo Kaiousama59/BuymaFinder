@@ -11,6 +11,8 @@ from buymafinder.services.collector import collect_products
 from buymafinder.services.csv_exporter import export_products_csv
 from buymafinder.services.pricing import apply_pricing
 from buymafinder.services.scan_state import ScanStateRepository
+from buymafinder.shops.antonia import AntoniaAdapter
+from buymafinder.shops.base import ShopAdapter
 from buymafinder.shops.eleonora import EleonoraAdapter
 
 
@@ -58,10 +60,14 @@ def main() -> int:
         "eleonora": EleonoraAdapter(
             max_pages_per_source=args.max_pages,
             max_links_per_source=per_source_link_cap,
-        )
+        ),
+        "antonia": AntoniaAdapter(
+            max_pages_per_source=args.max_pages,
+            max_links_per_source=per_source_link_cap,
+        ),
     }
 
-    def adapter_factory(shop_code: str) -> EleonoraAdapter:
+    def adapter_factory(shop_code: str) -> ShopAdapter:
         try:
             return adapters[shop_code]
         except KeyError as error:

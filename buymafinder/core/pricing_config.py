@@ -8,7 +8,13 @@ from typing import Any
 from buymafinder.core.pricing_models import PricingSettings
 
 
-SUPPORTED_CURRENCIES = frozenset({"EUR"})
+SUPPORTED_CURRENCIES = frozenset({"EUR", "USD", "GBP"})
+# EUR must always be configured (the original single-shop assumption). USD and
+# GBP are validated when present but are optional: a source that never shows
+# those currencies shouldn't be forced to configure a rate for them, and a
+# product priced in a currency that isn't configured is marked
+# "unsupported_currency" per-product rather than failing the whole run.
+REQUIRED_CURRENCIES = frozenset({"EUR"})
 REQUIRED_GLOBAL_KEYS = (
     "exchange_rates.EUR",
     "target_profit_margin",
@@ -110,7 +116,7 @@ def _currency_rates(
             invalid_keys.append(f"exchange_rates.{currency}")
         else:
             rates[currency] = rate
-    for currency in SUPPORTED_CURRENCIES:
+    for currency in REQUIRED_CURRENCIES:
         if currency not in raw_rates:
             missing_keys.append(f"exchange_rates.{currency}")
     return rates
