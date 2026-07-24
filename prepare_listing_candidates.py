@@ -6,6 +6,9 @@ from pathlib import Path
 from buymafinder.core.listing_config import load_listing_settings
 from buymafinder.services.candidate_listing_preparer import (
     load_approved_candidate_rows,
+    load_color_overrides,
+    load_description_translations,
+    load_target_overrides,
     prepare_candidate_packages,
     write_package_queue,
 )
@@ -21,13 +24,41 @@ def main() -> int:
     parser.add_argument("--queue", type=Path, default=Path("output/prepared_candidate_queue.json"))
     parser.add_argument("--approve-all", action="store_true", help="Explicitly approve every row in the candidate CSV")
     parser.add_argument("--skip-images", action="store_true")
+    parser.add_argument(
+        "--translations",
+        type=Path,
+        default=Path("output/description_translations.json"),
+        help="SKU -> hand-translated Japanese product-detail text; used in place of the mechanical fallback",
+    )
+    parser.add_argument(
+        "--color-overrides",
+        type=Path,
+        default=Path("output/color_overrides.json"),
+        help="SKU -> [color_family, color_name] manual overrides; used in place of the keyword-matched color",
+    )
+    parser.add_argument(
+        "--target-overrides",
+        type=Path,
+        default=Path("output/target_overrides.json"),
+        help="SKU -> \"men\"/\"women\" manual overrides; used in place of the source collection's gender",
+    )
     args = parser.parse_args()
 
     rows = load_approved_candidate_rows(args.candidates_csv, approve_all=args.approve_all)
     products = load_products(args.products_csv)
     settings = load_listing_settings(args.config)
+    translations = load_description_translations(args.translations)
+    color_overrides = load_color_overrides(args.color_overrides)
+    target_overrides = load_target_overrides(args.target_overrides)
     folders = prepare_candidate_packages(
-        products, rows, settings, args.output_root, download_images=not args.skip_images
+        products,
+        rows,
+        settings,
+        args.output_root,
+        download_images=not args.skip_images,
+        description_translations=translations,
+        color_overrides=color_overrides,
+        target_overrides=target_overrides,
     )
     write_package_queue(folders, args.queue)
     print(f"Prepared {len(folders)} candidate packages and queue: {args.queue}")

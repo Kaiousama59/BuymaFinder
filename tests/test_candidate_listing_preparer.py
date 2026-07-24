@@ -77,9 +77,9 @@ def test_builds_product_specific_settings_without_guessing_color() -> None:
 @pytest.mark.parametrize(
     ("name", "method", "shipping"),
     [
-        ("T-SHIRT IN COTONE", "かんたんBUYMA便【匿名配送】 - ゆうパケット", 280),
+        ("T-SHIRT IN COTONE", "かんたんBUYMA便【匿名配送】 - ゆうパケット", 300),
         ("GIACCA IN DENIM", "かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ", 800),
-        ("CABAN REVERSIBILE", "かんたんBUYMA便【匿名配送】 - ゆうパック 80サイズ", 950),
+        ("CABAN REVERSIBILE", "かんたんBUYMA便【匿名配送】 - ゆうパック 60サイズ", 800),
     ],
 )
 def test_uses_reviewed_shipping_class(name: str, method: str, shipping: int) -> None:

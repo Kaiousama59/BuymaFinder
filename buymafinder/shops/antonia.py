@@ -23,7 +23,7 @@ from buymafinder.shops.common import (
 )
 
 
-PRODUCT_PATH = re.compile(r"^/en-us/products/[^/?#]+/?$")
+PRODUCT_PATH = re.compile(r"^/[a-z]{2}(?:-[a-z]{2})?/products/[^/?#]+/?$")
 _LOGGER = logging.getLogger(__name__)
 
 # Confirmed against a live product page (2026-07-20): the "Details" accordion
@@ -41,6 +41,11 @@ _ACCORDION_CONTENT_CLASS = "product__meta__accordions__contents__content"
 _SIZE_TOKEN = re.compile(r"^(?:IT)?\d{2}(?:\.\d)?$|^(?:XXS|XS|S|M|L|XL|XXL|XXXL|ONE SIZE|OS)$")
 _SIZE_TAGS = {"button", "input", "label", "li"}
 _UNAVAILABLE_CLASS_KEYWORDS = ("disabled", "sold-out", "sold_out", "soldout", "unavailable")
+
+# All-caps UI strings (confirmed live, e.g. a CSS-hidden "back in stock"
+# button reading "SOLD OUT") that would otherwise be mistaken for a brand
+# name by brand_heading()'s all-caps heuristic.
+_NON_BRAND_UI_TEXT = {"SOLD OUT", "OUT OF STOCK", "ADD TO CART", "SOLD", "UNAVAILABLE"}
 
 
 def parse_product_links(html: str, base_url: str) -> list[str]:
@@ -105,8 +110,16 @@ def parse_product_detail_html(
     product_url: str,
     source: Source,
     collected_at: datetime | None = None,
+    *,
+    target_sku: str | None = None,
 ) -> Product:
-    """Build a normalized shared Product from an antonia.it product page."""
+    """Build a normalized shared Product from an antonia.it product page.
+
+    ``target_sku`` is accepted for interface parity with shops that expose
+    multiple priced variants per URL (e.g. flannels.com); antonia.it has one
+    product per URL, so it's unused here.
+    """
+    del target_sku
     parser = _AntoniaHTMLParser()
     parser.feed(html)
     metadata = parser.metadata
@@ -142,7 +155,13 @@ def parse_product_detail_html(
     image_urls = _image_urls(parser, metadata, json_product, product_url, product_root)
     sizes = parser.size_stocks(root=product_root)
     availability = offer_availability(json_product)
-    in_stock = overall_stock(parser.metadata, sizes, product_root.full_text(), availability)
+    # No page-text keyword scan here (unlike Eleonora): confirmed live pages
+    # always contain the literal string "SOLD OUT" regardless of actual stock
+    # (a CSS-hidden "notify when back in stock" button, plus theme JS string
+    # literals), so a text search would misreport every product as sold out.
+    # data-available-driven sizes plus JSON-LD offer availability are the
+    # reliable signals here.
+    in_stock = overall_stock(parser.metadata, sizes, "", availability)
     return Product(
         shop_code=source.shop_code,
         shop_name=source.shop_name,
@@ -184,7 +203,7 @@ class AntoniaAdapter(ShopAdapter):
             product_links: list[str] = []
             for page_number in range(1, self.max_pages_per_source + 1):
                 try:
-                    page.locator("a[href*='/products/']").first.wait_for(state="attached", timeout=20_000)
+                    self._wait_for_product_grid(page)
                 except Exception:
                     if page_number == 1:
                         raise
@@ -211,14 +230,66 @@ class AntoniaAdapter(ShopAdapter):
     def collect_product_detail(self, product_url: str, source: Source, browser: Any) -> Product:
         page = browser.new_page()
         try:
-            self._navigate(page, product_url)
-            page.locator("body").wait_for(state="attached", timeout=20_000)
-            return parse_product_detail_html(page.content(), page.url, source)
+            for attempt in range(1, AntoniaAdapter.PRODUCT_DETAIL_ATTEMPTS + 1):
+                self._navigate(page, product_url)
+                page.locator("body").wait_for(state="attached", timeout=20_000)
+                product = parse_product_detail_html(page.content(), page.url, source)
+                if product.brand.strip() and product.sku.strip():
+                    return product
+                if attempt < AntoniaAdapter.PRODUCT_DETAIL_ATTEMPTS:
+                    # A missing brand/sku usually means the page served an
+                    # anti-bot verification challenge instead of the real
+                    # product (observed live under sustained request volume)
+                    # rather than a genuine parsing gap; back off and retry.
+                    _LOGGER.warning(
+                        "Product detail page looked incomplete (attempt %d/%d), retrying: %s",
+                        attempt,
+                        AntoniaAdapter.PRODUCT_DETAIL_ATTEMPTS,
+                        product_url,
+                    )
+                    page.wait_for_timeout(AntoniaAdapter.PRODUCT_DETAIL_RETRY_DELAY_MS)
+            raise RuntimeError(
+                f"Product page repeatedly returned no brand/sku (likely a bot-check page): {product_url}"
+            )
         finally:
             page.close()
 
     NAVIGATION_TIMEOUT_MS = 60_000
     NAVIGATION_ATTEMPTS = 2
+    PRODUCT_GRID_TIMEOUT_MS = 20_000
+    PRODUCT_GRID_ATTEMPTS = 2
+    PRODUCT_DETAIL_ATTEMPTS = 3
+    PRODUCT_DETAIL_RETRY_DELAY_MS = 4_000
+
+    @staticmethod
+    def _wait_for_product_grid(page: Any) -> None:
+        # Collection pages occasionally leave the product grid unrendered
+        # within the timeout (observed live on several -men collections,
+        # likely related to the site's client-side geolocation redirect);
+        # a reload usually recovers it.
+        last_error: Exception | None = None
+        for attempt in range(1, AntoniaAdapter.PRODUCT_GRID_ATTEMPTS + 1):
+            try:
+                page.locator("a[href*='/products/']").first.wait_for(
+                    state="attached", timeout=AntoniaAdapter.PRODUCT_GRID_TIMEOUT_MS
+                )
+                return
+            except Exception as error:
+                last_error = error
+                if attempt < AntoniaAdapter.PRODUCT_GRID_ATTEMPTS:
+                    _LOGGER.warning(
+                        "Product grid did not appear (attempt %d/%d), reloading: %s",
+                        attempt,
+                        AntoniaAdapter.PRODUCT_GRID_ATTEMPTS,
+                        page.url,
+                    )
+                    try:
+                        page.reload(wait_until="domcontentloaded", timeout=AntoniaAdapter.NAVIGATION_TIMEOUT_MS)
+                        AntoniaAdapter._dismiss_cookie_dialog(page)
+                    except Exception:
+                        pass
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _navigate(page: Any, url: str) -> None:
@@ -301,7 +372,13 @@ class _AntoniaHTMLParser(ShopHTMLParser):
                 continue
             text = normalize_whitespace(node.full_text())
             letters = sum(1 for character in text if character.isalpha())
-            if text and text == text.upper() and letters >= 3 and len(text) <= 40:
+            if (
+                text
+                and text == text.upper()
+                and letters >= 3
+                and len(text) <= 40
+                and text not in _NON_BRAND_UI_TEXT
+            ):
                 return text
         return ""
 
@@ -394,14 +471,38 @@ def _image_urls(
     urls = [metadata.get("og:image", "")]
     image_data = json_product.get("image", []) if json_product else []
     urls.extend(image_data if isinstance(image_data, list) else [image_data])
-    # Confirmed live markup: `.product-template` also contains a "recently
-    # viewed"/recommendations grid with its own <img> tags for OTHER
-    # products, so <img> scanning must be scoped to `.product-gallery`
-    # specifically (the current product's own media), not the wider
-    # product_root.
+    # `.product-gallery` doesn't actually exist on this template (confirmed
+    # live), so this scoping silently always fell back to product_root —
+    # which also contains a "recently viewed"/recommendations widget with
+    # its own <img> tags for OTHER products (confirmed live: a LOEWE
+    # sneaker's own page returned pump/bag/belt photos from that widget).
+    # Kept as a first attempt in case a future/different template does
+    # expose it, but not trusted on its own; see the SKU filter below.
     gallery_nodes = _AntoniaHTMLParser.find_nodes(product_root, None, None, "product-gallery")
     scope = gallery_nodes[0] if gallery_nodes else product_root
     for node in _AntoniaHTMLParser.find_nodes(scope, "img", None, None):
         urls.append(node.attributes.get("src", "") or node.attributes.get("data-src", ""))
     usable = [urljoin(base_url, url) for url in urls if url and not url.startswith("data:")]
-    return unique_normalized_urls(usable)
+    usable = unique_normalized_urls(usable)
+    # Every image on this site is named "...---{SKU}.jpg" (or "...{SKU}_N_
+    # P.jpg" for extra angles), and the SKU also always ends the product's
+    # own URL slug, so it's used as a hard filter against whatever leaked in
+    # from the recommendations widget above — more reliable than trusting
+    # any particular DOM scoping to keep matching this site's markup.
+    sku_token = _url_sku_token(base_url)
+    if sku_token:
+        filtered = [url for url in usable if sku_token in url.lower()]
+        if filtered:
+            return filtered
+    return usable
+
+
+def _url_sku_token(product_url: str) -> str:
+    slug = urlsplit(product_url).path.rstrip("/").rsplit("/", 1)[-1]
+    # A trailing "-1"/"-2" is a duplicate-listing-page disambiguator, not
+    # part of the SKU itself (e.g. ".../j21gc0004j45084406-1"), so it's
+    # stripped before isolating the SKU as the slug's final run of
+    # alphanumeric characters.
+    slug = re.sub(r"-\d+$", "", slug)
+    match = re.search(r"[a-z0-9]{8,}$", slug)
+    return match.group(0) if match else ""

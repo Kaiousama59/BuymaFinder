@@ -1,7 +1,81 @@
 shop_code,shop_name,target,category,list_url,enabled
-eleonora,Eleonora Bonucci,women,Clothing,https://eleonorabonucci.com/en/women/new-collection/clothing/,0
-eleonora,Eleonora Bonucci,women,Footwear,https://eleonorabonucci.com/en/women/new-collection/footwear/,0
-eleonora,Eleonora Bonucci,women,Accessories,https://eleonorabonucci.com/en/women/new-collection/accessories/,0
-eleonora,Eleonora Bonucci,women,Bags,https://eleonorabonucci.com/en/women/new-collection/bags/,0
+eleonora,Eleonora Bonucci,women,Clothing,https://eleonorabonucci.com/en/women/new-collection/clothing/,1
+eleonora,Eleonora Bonucci,women,Footwear,https://eleonorabonucci.com/en/women/new-collection/footwear/,1
+eleonora,Eleonora Bonucci,women,Accessories,https://eleonorabonucci.com/en/women/new-collection/accessories/,1
+eleonora,Eleonora Bonucci,women,Bags,https://eleonorabonucci.com/en/women/new-collection/bags/,1
 antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/maison-margiela-men,1
 antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/balenciaga-women,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/gucci-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/gucci-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/bottega-veneta-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/bottega-veneta-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/fendi-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/fendi-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/loewe-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/loewe-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/saint-laurent-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/saint-laurent-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/fear-of-god-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/fear-of-god-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/jil-sander-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/jil-sander-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/moncler-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/moncler-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/nike-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/nike-men,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/stone-island-men,1
+antonia,Antonia,women,Clothing,https://www.antonia.it/en-us/collections/ami-paris-women,1
+antonia,Antonia,men,Clothing,https://www.antonia.it/en-us/collections/ami-paris-men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/maison-margiela/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/maison-margiela/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/ami-paris/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/ami-paris/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/balenciaga/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/balenciaga/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/rick-owens/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/rick-owens/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/gucci/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/gucci/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/bottega-veneta/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/bottega-veneta/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/fendi/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/fendi/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/saint-laurent/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/saint-laurent/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/jil-sander/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/jil-sander/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/moncler/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/moncler/men,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/stone-island/men,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/kenzo/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/prada/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/prada/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/marni/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/marni/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/off-white/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/off-white/men,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/diesel/women,1
+flannels,Flannels,men,Clothing,https://www.flannels.com/diesel/men,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-maison-margiela,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-maison-margiela,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-balenciaga,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-rick-owens,1
+flannels,Flannels,women,Clothing,https://www.flannels.com/mulberry,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-paraboot,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-ami-paris,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-ami-paris,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-balenciaga,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-bottega-veneta,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-bottega-veneta,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-fear-of-god,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-jil-sander,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-jil-sander,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-kenzo,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-loewe,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-loewe,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-moncler,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-moncler,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-saint-laurent,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-saint-laurent,1
+thedoublef,TheDoubleF,men,Clothing,https://www.thedoublef.com/en-us/collections/man-stone-island,1
+thedoublef,TheDoubleF,women,Clothing,https://www.thedoublef.com/en-us/collections/woman-zimmermann,1

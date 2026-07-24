@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 import re
 import time
@@ -78,16 +77,7 @@ def download_product_images(urls: list[str], folder: Path, retries: int = 3) -> 
     hashes: set[str] = set()
     files: list[str] = []
     for url in urls:
-        try:
-            data, extension = _download(url, retries)
-        except ImageDownloadError:
-            # Some image URLs are reconstructed rather than scraped directly
-            # (e.g. a non-default colorway's gallery on flannels.com, built
-            # by pattern-matching another colorway's real URLs) and aren't
-            # guaranteed to exist; skip a bad one rather than losing the
-            # whole listing over one missing angle shot.
-            logging.warning("Skipping an image that failed to download: %s", url)
-            continue
+        data, extension = _download(url, retries)
         digest = hashlib.sha256(data).hexdigest()
         if digest in hashes:
             continue
@@ -100,22 +90,6 @@ def download_product_images(urls: list[str], folder: Path, retries: int = 3) -> 
         temporary = target.with_suffix(target.suffix + ".tmp")
         temporary.write_bytes(data)
         os.replace(temporary, target)
-        files.append(target.name)
-    if urls and not files:
-        raise ImageDownloadError(f"All {len(urls)} image URLs failed to download")
-    return files
-
-
-def _append_footer_images(folder: Path, *, start_index: int) -> list[str]:
-    if not FOOTER_IMAGES_DIR.is_dir():
-        return []
-    files: list[str] = []
-    for offset, source in enumerate(sorted(FOOTER_IMAGES_DIR.iterdir())):
-        if not source.is_file():
-            continue
-        index = start_index + offset
-        target = folder / f"{index:02d}_footer_{source.name}"
-        target.write_bytes(source.read_bytes())
         files.append(target.name)
     return files
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from buymafinder.services.buyma_draft_filler import fill_buyma_draft, wait_for_new_listing
+from buymafinder.services.buyma_draft_filler import OutOfStockError, fill_buyma_draft, wait_for_new_listing
 from buymafinder.services.listing_batch import (
     discover_batch_items,
     discover_queued_batch_items,
@@ -58,10 +58,19 @@ def main() -> int:
                     item.source_url,
                 )
                 wait_for_new_listing(page)
-                fill_buyma_draft(page, item.package_folder, save_draft=True)
+                try:
+                    fill_buyma_draft(page, item.package_folder, save_draft=True)
+                except OutOfStockError as error:
+                    # Expected and non-fatal: BUYMA itself won't save a
+                    # draft with zero purchasable stock, so this item can
+                    # never succeed until it's back in stock. Marked
+                    # complete so the batch doesn't retry it forever, and
+                    # the batch continues rather than stopping entirely.
+                    logging.warning("Skipping %s: %s", item.package_folder, error)
+                else:
+                    logging.info("Draft saved and progress recorded: %s", item.package_folder)
                 completed.add(item.key)
                 save_completed_keys(args.progress, completed)
-                logging.info("Draft saved and progress recorded: %s", item.package_folder)
                 if index < len(pending):
                     time.sleep(args.delay_seconds)
         except Exception:

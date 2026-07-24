@@ -48,8 +48,12 @@ def collect_products(
 
     products: list[Product] = list(initial_products or [])
     seen_urls: set[str] = {product.product_url for product in products}
-    seen_skus: set[str] = {
-        product.sku.casefold().strip() for product in products if product.sku.strip()
+    # Identity is (url, sku) rather than url alone: a shop adapter may return
+    # several purchasable variants (e.g. differently-priced colorways) for
+    # one product URL, and those must be treated as distinct products, not
+    # deduplicated away just because they share a URL.
+    seen_identities: set[tuple[str, str]] = {
+        (product.product_url, product.sku.casefold().strip()) for product in products
     }
     if products:
         LOGGER.info("Restored %d previously collected products.", len(products))
@@ -107,10 +111,13 @@ def collect_products(
                 product_url,
             )
             try:
-                product = adapter.normalize_product(adapter.collect_product_detail(product_url, source, browser))
+                variants = [
+                    adapter.normalize_product(variant)
+                    for variant in adapter.collect_product_variants(product_url, source, browser)
+                ]
             except Exception:
                 LOGGER.exception(
-                    "Collection error: shop=%s category=%s url=%s operation=collect_product_detail",
+                    "Collection error: shop=%s category=%s url=%s operation=collect_product_variants",
                     source.shop_code,
                     source.category,
                     product_url,
@@ -119,18 +126,22 @@ def collect_products(
                 total_failure += 1
                 continue
 
-            normalized_url = product.product_url
-            normalized_sku = product.sku.casefold().strip()
-            if normalized_url in seen_urls or (normalized_sku and normalized_sku in seen_skus):
-                continue
-            seen_urls.add(normalized_url)
-            if normalized_sku:
-                seen_skus.add(normalized_sku)
-            products.append(product)
-            source_product_count += 1
-            total_success += 1
-            if product_sink is not None:
-                product_sink(product)
+            seen_urls.add(product_url)
+            for product in variants:
+                if len(products) >= limit:
+                    break
+                if per_source_limit is not None and source_product_count >= per_source_limit:
+                    break
+                identity = (product.product_url, product.sku.casefold().strip())
+                if identity in seen_identities:
+                    continue
+                seen_urls.add(product.product_url)
+                seen_identities.add(identity)
+                products.append(product)
+                source_product_count += 1
+                total_success += 1
+                if product_sink is not None:
+                    product_sink(product)
 
         LOGGER.info(
             "Source %s/%s finished: %d collected, %d failed.",

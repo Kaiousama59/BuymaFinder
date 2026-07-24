@@ -76,8 +76,16 @@ def parse_product_detail_html(
     product_url: str,
     source: Source,
     collected_at: datetime | None = None,
+    *,
+    target_sku: str | None = None,
 ) -> Product:
-    """Build a normalized shared Product from Eleonora product page HTML."""
+    """Build a normalized shared Product from Eleonora product page HTML.
+
+    ``target_sku`` is accepted for interface parity with shops that expose
+    multiple priced variants per URL (e.g. flannels.com); eleonorabonucci.com
+    has one product per URL, so it's unused here.
+    """
+    del target_sku
     parser = _EleonoraHTMLParser()
     parser.feed(html)
     metadata = parser.metadata

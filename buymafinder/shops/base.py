@@ -18,8 +18,19 @@ class ShopAdapter(ABC):
 
     @abstractmethod
     def collect_product_detail(self, product_url: str, source: Source, browser: Any) -> Product:
-        """Collect and normalize one product detail page."""
+        """Collect and normalize one product detail page (its default variant, if any)."""
         raise NotImplementedError
+
+    def collect_product_variants(self, product_url: str, source: Source, browser: Any) -> list[Product]:
+        """Collect every purchasable variant (e.g. colorway) at one product URL.
+
+        Most shops have exactly one variant per URL, so the default
+        implementation just wraps ``collect_product_detail``. Adapters for
+        sites that expose multiple priced variants under the same URL (e.g.
+        a color picker where each color has its own price) should override
+        this to return all of them.
+        """
+        return [self.collect_product_detail(product_url, source, browser)]
 
     def normalize_product(self, product: Product) -> Product:
         """Apply common cleanup after shop-specific parsing."""

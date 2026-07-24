@@ -44,6 +44,15 @@ def parse_price(value: str) -> tuple[str, Decimal | None]:
     elif "," in number:
         fraction = number.rsplit(",", 1)[1]
         number = number.replace(",", ".") if len(fraction) in {1, 2} else number.replace(",", "")
+    elif "." in number:
+        # A lone "." with exactly 3 trailing digits is a European thousands
+        # separator (e.g. "1.805" meaning 1805), not a decimal point: retail
+        # prices are never quoted to sub-cent precision, so this pattern is
+        # unambiguous. Confirmed live: a jacket priced "€1.805" (1805 EUR)
+        # was otherwise misparsed as 1.805 EUR, undervaluing it ~1000x.
+        fraction = number.rsplit(".", 1)[1]
+        if len(fraction) == 3:
+            number = number.replace(".", "")
     try:
         return currency, Decimal(number)
     except InvalidOperation:

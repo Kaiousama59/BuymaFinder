@@ -53,7 +53,23 @@ def test_reference_size_maps_italian_clothing_sizes(source: str, expected: str) 
 
 
 def test_reference_size_does_not_treat_european_shoe_size_as_clothing() -> None:
-    assert _reference_size_label("40", ["レディースファッション", "靴・シューズ"]) == "指定なし"
+    assert _reference_size_label("40", ["レディースファッション", "靴・シューズ"]) == "26cm"
+
+
+def test_reference_size_converts_womens_shoe_size_to_cm() -> None:
+    assert _reference_size_label("IT36.5", ["レディースファッション", "ブーツ", "ブーツその他"]) == "23.5cm"
+
+
+def test_reference_size_converts_mens_shoe_size_to_cm() -> None:
+    assert _reference_size_label("IT42", ["メンズファッション", "靴・ブーツ・サンダル", "ブーツ"]) == "26cm"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [("44", "XS以下"), ("46", "S"), ("48", "M"), ("50", "L"), ("52", "XL以上")],
+)
+def test_reference_size_maps_italian_mens_clothing_sizes(source: str, expected: str) -> None:
+    assert _reference_size_label(source, ["メンズファッション", "トップス"]) == expected
 
 
 def test_date_comparison_accepts_browser_date_separator() -> None:

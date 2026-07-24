@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -11,14 +13,36 @@ from urllib.parse import urlsplit
 from playwright.sync_api import BrowserContext, Locator, Page, TimeoutError as PlaywrightTimeoutError
 
 from buymafinder.core.models import SizeStock, Source
-from buymafinder.shops.eleonora import parse_product_detail_html
+from buymafinder.shops.antonia import parse_product_detail_html as _parse_antonia_product_detail_html
+from buymafinder.shops.eleonora import parse_product_detail_html as _parse_eleonora_product_detail_html
+from buymafinder.shops.flannels import parse_product_detail_html as _parse_flannels_product_detail_html
+from buymafinder.shops.thedoublef import parse_product_detail_html as _parse_thedoublef_product_detail_html
 
 
 BUYMA_NEW_LISTING_URL = "https://www.buyma.com/my/sell/new?tab=b"
 
+# Per-supplier live stock refresh: shop_code, the shop's parse_product_detail_html,
+# and a selector to wait for before reading the page (a signal that the
+# size/stock markup has rendered). Add an entry here whenever a new source
+# adapter needs to support the pre-draft stock re-check.
+_SUPPLIER_REGISTRY: dict[str, tuple[str, Callable[..., object], str]] = {
+    "eleonorabonucci.com": ("eleonora", _parse_eleonora_product_detail_html, "select option"),
+    "www.eleonorabonucci.com": ("eleonora", _parse_eleonora_product_detail_html, "select option"),
+    "antonia.it": ("antonia", _parse_antonia_product_detail_html, "body"),
+    "www.antonia.it": ("antonia", _parse_antonia_product_detail_html, "body"),
+    "flannels.com": ("flannels", _parse_flannels_product_detail_html, "body"),
+    "www.flannels.com": ("flannels", _parse_flannels_product_detail_html, "body"),
+    "thedoublef.com": ("thedoublef", _parse_thedoublef_product_detail_html, "product-main"),
+    "www.thedoublef.com": ("thedoublef", _parse_thedoublef_product_detail_html, "product-main"),
+}
+
 
 class BuymaDraftError(RuntimeError):
     pass
+
+
+class OutOfStockError(BuymaDraftError):
+    """Raised when a product has zero purchasable stock; BUYMA won't save a draft for it."""
 
 
 class ShippingNotAvailableError(BuymaDraftError):
@@ -53,6 +77,327 @@ def assert_safe_buyma_page(page: Page) -> None:
         raise BuymaDraftError(f"Refusing to fill a page other than BUYMA new listing: {page.url}")
 
 
+_DRAFT_EDIT_PATH = re.compile(r"^/my/sell/\d+/edit$")
+
+
+def assert_safe_buyma_draft_edit_page(page: Page, draft_id: str) -> None:
+    parsed = urlsplit(page.url)
+    if parsed.scheme != "https" or parsed.netloc not in {"buyma.com", "www.buyma.com"}:
+        raise BuymaDraftError(f"Refusing to edit a non-BUYMA page: {page.url}")
+    expected_path = f"/my/sell/{draft_id}/edit"
+    if parsed.path.rstrip("/") != expected_path:
+        raise BuymaDraftError(f"Refusing to edit a page other than the intended draft: {page.url}")
+
+
+def edit_buyma_draft_title(page: Page, draft_id: str, new_title: str) -> None:
+    """Update only the 商品名 (title) field of an already-saved BUYMA draft.
+
+    Deliberately separate from fill_buyma_draft(), which is hard-restricted
+    by assert_safe_buyma_page() to /my/sell/new only: redrafting every
+    existing listing from scratch to fix a title-format bug isn't practical
+    at this batch's size, so this instead opens the draft's own /edit page
+    and touches nothing but the title field.
+    """
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("商品名", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    _fill_near(page, "商品名", "input", new_title)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    # The save button's own on-page state never changes on failure (no
+    # visible error banner, no URL change either way) — confirmed live that
+    # a rejected save (e.g. BUYMA's own title-length validation) only shows
+    # up as a non-2xx response on this PUT, with the page otherwise looking
+    # identical to a successful save. The response is the only reliable
+    # signal, so it's captured directly instead of inferred from the DOM.
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the title update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s title updated.", draft_id)
+
+
+def edit_buyma_draft_description(page: Page, draft_id: str, new_description: str) -> None:
+    """Update only the 商品コメント (description) field of an already-saved BUYMA draft.
+
+    Same rationale and safety approach as edit_buyma_draft_title().
+    """
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("商品コメント", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    _fill_near(page, "商品コメント", "textarea", new_description)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the description update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s description updated.", draft_id)
+
+
+def edit_buyma_draft_category(page: Page, draft_id: str, category_path: list[str]) -> None:
+    """Update only the カテゴリ (category) field of an already-saved BUYMA draft.
+
+    Same rationale and safety approach as edit_buyma_draft_title(): opens
+    the draft's own /edit page and touches nothing but the category
+    dropdowns, verifying success from the save PUT response rather than
+    any on-page state (which looks identical whether the save succeeded).
+    """
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("カテゴリ", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    _select_category(page, category_path)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the category update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s category updated.", draft_id)
+
+
+def edit_buyma_draft_color(page: Page, draft_id: str, color_family: str, color_name: str = "") -> None:
+    """Update only the 色・サイズ (color) field of an already-saved BUYMA draft.
+
+    Same rationale and safety approach as edit_buyma_draft_title(). Unlike
+    edit_buyma_draft_category(), this doesn't touch the stock table, so it
+    isn't expected to trip BUYMA's "incomplete stock selection" validation
+    the way a category change can.
+    """
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("色・サイズ", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    _select_color(page, color_family, color_name)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the color update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s color updated.", draft_id)
+
+
+def edit_buyma_draft_images(page: Page, draft_id: str, image_paths: list[str], *, remove_existing: bool = False) -> None:
+    """Add images to an already-saved BUYMA draft, optionally clearing existing ones first.
+
+    The edit page's own file input starts empty regardless of how many
+    images are already uploaded (previously-saved images render as separate
+    thumbnails, not as pre-populated files on the input), so set_input_files
+    here only adds image_paths — it does not replace what's already there
+    on its own, hence the explicit remove_existing step. Same save/verify
+    approach as edit_buyma_draft_title().
+    """
+    if not image_paths:
+        raise BuymaDraftError("No images were given to add")
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("商品画像", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    if remove_existing:
+        # Each delete icon triggers a native confirm() ("削除してよろしいで
+        # すか？"); without a dialog handler, Playwright leaves it
+        # unresolved and the click has no visible effect (confirmed live —
+        # the icon looked clickable and the click "succeeded" with the
+        # thumbnail still there afterward). page.once() (not page.on()) is
+        # used so the handler self-removes after firing — this function
+        # runs many times against the same shared page across a batch, and
+        # a page.on() handler would keep stacking a new listener on every
+        # call, each trying to accept an already-handled dialog and
+        # throwing (confirmed live: this crashed a 100+ item batch partway
+        # through with "Dialog.accept: Cannot accept dialog which is
+        # already handled!").
+        delete_icon = page.locator(".js-delete-icon")
+        remaining = delete_icon.count()
+        while remaining > 0:
+            page.once("dialog", lambda dialog: dialog.accept())
+            delete_icon.first.click(force=True)
+            page.wait_for_timeout(500)
+            new_remaining = delete_icon.count()
+            if new_remaining >= remaining:
+                raise BuymaDraftError(f"Could not remove existing images from draft {draft_id}: stuck at {remaining}")
+            remaining = new_remaining
+    upload = page.locator('input[type="file"]').first
+    if upload.count() == 0:
+        raise BuymaDraftError("BUYMA image upload input was not found")
+    upload.set_input_files(image_paths)
+    # Each image is uploaded to BUYMA's own storage individually once
+    # selected; the save button isn't ready to submit until every one has
+    # finished, which isn't signaled by any single network response, so a
+    # settle wait is used instead (mirrors the same per-image delay already
+    # relied on elsewhere in this form).
+    page.wait_for_timeout(1500 * len(image_paths))
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the image update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s images updated (+%d).", draft_id, len(image_paths))
+
+
+def edit_buyma_draft_stock(
+    page: Page,
+    draft_id: str,
+    size_stocks: list[SizeStock],
+    *,
+    size_variation: bool,
+    size_unit: str = "",
+    purchasable_quantity: int,
+    on_hand_quantity: int = 0,
+) -> None:
+    """Update only the 販売可否/在庫 (stock) field of an already-saved BUYMA draft.
+
+    Reuses _fill_size_inventory() (the same per-size stock table logic
+    fill_buyma_draft() uses for a brand-new listing) against the draft's own
+    /edit page, since stock is the one field expected to go stale between
+    when a listing was first drafted and whenever it's next reviewed.
+    """
+    page.goto(f"https://www.buyma.com/my/sell/{draft_id}/edit", wait_until="networkidle", timeout=60_000)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    page.get_by_text("販売可否/在庫", exact=True).first.wait_for(state="visible", timeout=20_000)
+    _dismiss_blocking_overlays(page)
+    _fill_size_inventory(
+        page,
+        size_stocks,
+        size_variation=size_variation,
+        size_unit=size_unit,
+        purchasable_quantity=purchasable_quantity,
+        on_hand_quantity=on_hand_quantity,
+    )
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    button = page.get_by_role("button", name="下書き保存する", exact=True)
+    if button.count() == 0:
+        button = page.get_by_role("button", name="下書き保存", exact=True)
+    if button.count() == 0:
+        raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
+    with page.expect_response(
+        lambda response: response.url.endswith(f"/rorapi/sell/products/{draft_id}") and response.request.method == "PUT",
+        timeout=20_000,
+    ) as response_info:
+        button.first.click()
+    response = response_info.value
+    if not response.ok:
+        try:
+            body = response.text()
+        except Exception:
+            body = "<unreadable response body>"
+        raise BuymaDraftError(f"BUYMA rejected the stock update for draft {draft_id} ({response.status}): {body}")
+    page.wait_for_timeout(500)
+    assert_safe_buyma_draft_edit_page(page, draft_id)
+    logging.info("BUYMA draft %s stock updated.", draft_id)
+
+
+def list_buyma_draft_source_urls(page: Page) -> dict[str, str]:
+    """Return {draft_id: source_url} for every current BUYMA draft.
+
+    The draft list's own visible row text truncates each row's source URL
+    (e.g. "...prod..."), but each row also carries a `data-shop-urls`
+    attribute with the full, untruncated JSON (confirmed live) — that's
+    what's parsed here rather than the rendered text, since matching drafts
+    back to local packages needs an exact, complete source_url.
+    """
+    mapping: dict[str, str] = {}
+    page_number = 1
+    empty_pages = 0
+    while empty_pages < 2:
+        page.goto(
+            f"https://www.buyma.com/my/sell/?status=draft&tab=b&limit=100&page={page_number}",
+            wait_until="networkidle",
+            timeout=60_000,
+        )
+        page.wait_for_timeout(1200)
+        row_attributes = re.findall(r'data-shop-urls="([^"]*)"', page.content())
+        new_count = 0
+        for raw in row_attributes:
+            try:
+                shop_urls = json.loads(html.unescape(raw))
+            except json.JSONDecodeError:
+                continue
+            for entry in shop_urls:
+                draft_id = entry.get("syo_id")
+                source_url = entry.get("url")
+                if draft_id and source_url and str(draft_id) not in mapping:
+                    mapping[str(draft_id)] = source_url
+                    new_count += 1
+        empty_pages = empty_pages + 1 if not row_attributes else 0
+        page_number += 1
+    return mapping
+
+
 def fill_buyma_draft(
     page: Page,
     package_folder: Path,
@@ -63,7 +408,19 @@ def fill_buyma_draft(
     settings = payload["settings"]
     assert_safe_buyma_page(page)
     _dismiss_blocking_overlays(page)
-    size_stocks = _refresh_source_stock(page.context, payload)
+    size_stocks = _refresh_source_stock(
+        page.context, payload, size_variation=settings.get("size_variation", True)
+    )
+    if not any(item.in_stock for item in size_stocks):
+        # BUYMA's own draft-save button silently fails to navigate to a new
+        # draft when every size (or the whole no-size product) is out of
+        # stock, since there is nothing purchasable to list (confirmed live
+        # on multiple completely sold-out products). Raised early, before
+        # the rest of the form is filled in, so a batch run fails fast on
+        # this instead of timing out at the very end.
+        raise OutOfStockError(
+            f"{payload['brand']} {payload['sku']} is completely out of stock; BUYMA will not save a draft for it"
+        )
 
     images = [str((package_folder / name).resolve()) for name in payload["image_files"]]
     _upload_images(page, images)
@@ -92,6 +449,8 @@ def fill_buyma_draft(
     _fill_size_inventory(
         page,
         size_stocks,
+        size_variation=settings.get("size_variation", True),
+        size_unit=settings.get("size_unit", "cm"),
         purchasable_quantity=settings.get("purchasable_quantity", 1),
         on_hand_quantity=settings.get("on_hand_quantity", 0),
     )
@@ -104,20 +463,29 @@ def fill_buyma_draft(
         if button.count() == 0:
             raise BuymaDraftError("The draft-save button was not found; nothing was submitted")
         button.first.click()
+        try:
+            page.wait_for_url(re.compile(r"/my/sell/\d+/edit"), timeout=15_000)
+        except PlaywrightTimeoutError as error:
+            # Confirmed live: the save button can silently no-op and leave
+            # the page on /my/sell/new instead of navigating to the new
+            # draft's /edit URL, with no visible error on the page. Without
+            # this check that was logged as a successful save.
+            raise BuymaDraftError(
+                f"BUYMA draft-save did not navigate to a saved draft; still on {page.url}"
+            ) from error
         page.wait_for_timeout(1500)
         logging.info("BUYMA draft-save button clicked. Current URL: %s", page.url)
 
 
-def _refresh_source_stock(context: BrowserContext, payload: dict) -> list[SizeStock]:
+def _refresh_source_stock(context: BrowserContext, payload: dict, *, size_variation: bool = True) -> list[SizeStock]:
     source_url = str(payload["source_url"])
     parsed = urlsplit(source_url)
-    if parsed.scheme != "https" or parsed.netloc not in {
-        "eleonorabonucci.com",
-        "www.eleonorabonucci.com",
-    }:
+    supplier = _SUPPLIER_REGISTRY.get(parsed.netloc) if parsed.scheme == "https" else None
+    if supplier is None:
         raise BuymaDraftError(f"Live stock refresh is not supported for this supplier URL: {source_url}")
+    shop_code, parse_detail_html, ready_selector = supplier
     source = Source(
-        shop_code="eleonora",
+        shop_code=shop_code,
         shop_name=str(payload["supplier"]),
         target="women",
         category="Clothing",
@@ -125,18 +493,55 @@ def _refresh_source_stock(context: BrowserContext, payload: dict) -> list[SizeSt
     )
     stock_page = context.new_page()
     try:
-        stock_page.goto(source_url, wait_until="domcontentloaded", timeout=60_000)
-        stock_page.locator("select option").first.wait_for(state="attached", timeout=20_000)
-        product = parse_product_detail_html(stock_page.content(), source_url, source)
+        # A page fetch occasionally returns before the size widget has
+        # finished rendering (confirmed live: identical fetch/parse code
+        # reliably found sizes when re-run standalone against the same
+        # product moments later), so an empty result on a product that's
+        # expected to have real sizes is retried a couple of times before
+        # giving up, rather than immediately treating it as a dead page.
+        attempts = 4 if size_variation else 1
+        product = None
+        for attempt in range(1, attempts + 1):
+            stock_page.goto(source_url, wait_until="domcontentloaded", timeout=60_000)
+            stock_page.locator(ready_selector).first.wait_for(state="attached", timeout=20_000)
+            # Some shops build their size picker via client-side JS after
+            # the initial DOM attaches (confirmed live on antonia.it: a
+            # standalone fetch/parse of the same URL reliably found sizes,
+            # but the batch's back-to-back page loads sometimes captured
+            # content before that JS finished), so a short settle time is
+            # given before reading the page content.
+            stock_page.wait_for_timeout(1200)
+            product = parse_detail_html(stock_page.content(), source_url, source, target_sku=str(payload["sku"]))
+            if product.sizes or attempt == attempts:
+                break
+            logging.warning(
+                "%s page returned no sizes on attempt %d/%d; retrying",
+                payload["supplier"],
+                attempt,
+                attempts,
+            )
+            stock_page.wait_for_timeout(2000)
     except Exception as error:
         raise BuymaDraftError(
-            "Could not verify current sizes and stock on Eleonora Bonucci; draft was not saved"
+            f"Could not verify current sizes and stock on {payload['supplier']}; draft was not saved"
         ) from error
     finally:
         stock_page.close()
     if not product.sizes:
+        if not size_variation:
+            # No-size accessories (bags, wallets, belts, sunglasses) have no
+            # real size list to verify; fall back to the product's own
+            # top-level availability instead of treating an empty list as a
+            # failed page load (confirmed live: a Gucci bag page legitimately
+            # renders no size/variant selector at all).
+            in_stock = bool(product.in_stock)
+            logging.info(
+                "Live source stock verified (no-size product): %s",
+                "available" if in_stock else "sold out",
+            )
+            return [SizeStock(size="FREE", in_stock=in_stock)]
         raise BuymaDraftError(
-            "Eleonora Bonucci returned no size stock; draft was not saved to avoid stale inventory"
+            f"{payload['supplier']} returned no size stock; draft was not saved to avoid stale inventory"
         )
     logging.info(
         "Live source stock verified: %s",
@@ -192,7 +597,7 @@ def _select_category(page: Page, path: list[str]) -> None:
             control.select_option(label=value)
         else:
             _open_react_select(page, control)
-            option = _wait_for_react_option(page, value)
+            option = _wait_for_react_option(page, control, value)
             _safe_click(page, option)
         page.wait_for_timeout(400)
 
@@ -208,13 +613,24 @@ def _wait_for_combobox(page: Page, section: Locator, index: int, value: str) -> 
     raise BuymaDraftError(f"BUYMA category level {index + 1} did not appear before selecting: {value}")
 
 
-def _wait_for_react_option(page: Page, value: str) -> Locator:
+def _wait_for_react_option(page: Page, control: Locator, value: str) -> Locator:
+    # Scoped to the open dropdown's own option list: a page-wide text search
+    # (the previous approach) can match unrelated same-text cells elsewhere
+    # on the page (e.g. a different row's already-selected label), silently
+    # clicking the wrong element while the select's actual value is left at
+    # its default. Different BUYMA form widgets nest their menu under
+    # different ancestor levels, so every "Select"-classed ancestor (closest
+    # first) is tried until one actually contains the target option.
+    wrappers = control.locator("xpath=ancestor::*[contains(@class, 'Select')]")
     for _ in range(40):
-        matches = page.get_by_text(value, exact=True)
-        for index in range(matches.count()):
-            candidate = matches.nth(index)
-            if candidate.is_visible():
-                return candidate
+        count = wrappers.count()
+        for wrapper_index in range(count):
+            menu = wrappers.nth(wrapper_index).locator(".Select-menu, [role='listbox']")
+            matches = menu.get_by_text(value, exact=True)
+            for index in range(matches.count()):
+                candidate = matches.nth(index)
+                if candidate.is_visible():
+                    return candidate
         page.wait_for_timeout(250)
     raise BuymaDraftError(f"BUYMA option did not appear: {value}")
 
@@ -301,12 +717,20 @@ def _fill_sizes(
     comboboxes = section.locator("select:visible, [role='combobox']:visible")
     if comboboxes.count():
         _select_control_label(page, comboboxes.first, "バリエーションあり" if size_variation else "バリエーションなし")
-    if size_variation:
-        for _ in range(20):
-            if comboboxes.count() > 1:
-                _select_control_label(page, comboboxes.nth(1), size_unit)
-                break
-            page.wait_for_timeout(250)
+    if not size_variation:
+        # BUYMA auto-fills a single "FREE SIZE" row (with 参考日本サイズ already
+        # set to 指定なし) as soon as バリエーションなし is selected; there is no
+        # size input or reference dropdown to fill in ourselves.
+        if notes:
+            textareas = section.locator("textarea")
+            if textareas.count():
+                textareas.last.fill(notes)
+        return
+    for _ in range(20):
+        if comboboxes.count() > 1:
+            _select_control_label(page, comboboxes.nth(1), size_unit)
+            break
+        page.wait_for_timeout(250)
     for index, size in enumerate(sizes):
         inputs = section.locator("input[type='text']")
         if index >= inputs.count():
@@ -334,7 +758,7 @@ def _fill_sizes(
                 else:
                     _open_react_select(page, reference)
                     try:
-                        option = _wait_for_react_option(page, reference_label)
+                        option = _wait_for_react_option(page, reference, reference_label)
                     except BuymaDraftError:
                         logging.warning(
                             "BUYMA reference size %r was unavailable for source size %r; using unspecified",
@@ -342,7 +766,7 @@ def _fill_sizes(
                             size,
                         )
                         _open_react_select(page, reference)
-                        option = _wait_for_react_option(page, "指定なし")
+                        option = _wait_for_react_option(page, reference, "指定なし")
                     _safe_click(page, option)
     if notes:
         textareas = section.locator("textarea")
@@ -350,7 +774,7 @@ def _fill_sizes(
             textareas.last.fill(notes)
 
 
-def _select_control_label(page: Page, control: Locator, value: str) -> None:
+def _select_control_label(page: Page, control: Locator, value: str, *, scope: Locator | None = None) -> None:
     if control.evaluate("element => element.tagName") == "SELECT":
         options = control.locator("option")
         matching_value: str | None = None
@@ -364,49 +788,189 @@ def _select_control_label(page: Page, control: Locator, value: str) -> None:
         control.select_option(value=matching_value)
     else:
         _open_react_select(page, control)
-        visible = page.get_by_text(value, exact=True)
-        for index in range(visible.count()):
-            candidate = visible.nth(index)
-            if candidate.is_visible():
-                _safe_click(page, candidate)
-                return
-        search = control.locator("input")
-        if search.count():
-            search.first.fill(value)
-            search.first.press("ArrowDown")
-            search.first.press("Enter")
+        if scope is not None:
+            # The menu renders as a descendant of the same row/container as
+            # the control itself (confirmed for the per-size stock table),
+            # so searching there is simpler and more reliable than walking
+            # up an ancestor chain for a "Select"-classed wrapper.
+            menu = scope.locator(".Select-menu, [role='listbox']")
+            option = None
+            for _ in range(40):
+                matches = menu.get_by_text(value, exact=True)
+                for index in range(matches.count()):
+                    candidate = matches.nth(index)
+                    if candidate.is_visible():
+                        option = candidate
+                        break
+                if option is not None:
+                    break
+                page.wait_for_timeout(250)
+            if option is None:
+                raise BuymaDraftError(f"BUYMA option did not appear: {value}")
         else:
-            control.focus()
-            page.keyboard.type(value)
-            page.keyboard.press("ArrowDown")
-            page.keyboard.press("Enter")
+            option = _wait_for_react_option(page, control, value)
+        _safe_click(page, option)
         page.wait_for_timeout(500)
+
+
+# EU/IT foot-length size -> BUYMA's cm reference scale (approximate, shown as
+# 参考 only; brands vary by up to half a size). Each threshold is the largest
+# EU/IT size that still maps to the given cm label; sizes above the last
+# threshold fall through to the scale's own "以上" ceiling.
+_SHOE_SIZE_CM_WOMEN = (
+    (34.5, "21cm以下"), (35.0, "22cm"), (35.5, "22.5cm"), (36.0, "23cm"),
+    (36.5, "23.5cm"), (37.0, "24cm"), (37.5, "24.5cm"), (38.0, "24.5cm"),
+    (38.5, "25cm"), (39.0, "25.5cm"), (39.5, "26cm"), (40.0, "26cm"),
+    (40.5, "26.5cm"),
+)
+_SHOE_SIZE_CM_WOMEN_CEILING = "27cm以上"
+_SHOE_SIZE_CM_MEN = (
+    (38.5, "23cm以下"), (39.0, "23cm以下"), (39.5, "23.5cm"), (40.0, "24cm"),
+    (40.5, "24.5cm"), (41.0, "25cm"), (41.5, "25.5cm"), (42.0, "26cm"),
+    (42.5, "26.5cm"), (43.0, "27cm"), (43.5, "27.5cm"), (44.0, "28cm"),
+    (44.5, "28.5cm"),
+)
+_SHOE_SIZE_CM_MEN_CEILING = "29cm以上"
+
+
+def _shoe_size_to_cm_label(italian_size: float, *, is_men: bool) -> str:
+    table = _SHOE_SIZE_CM_MEN if is_men else _SHOE_SIZE_CM_WOMEN
+    ceiling = _SHOE_SIZE_CM_MEN_CEILING if is_men else _SHOE_SIZE_CM_WOMEN_CEILING
+    for threshold, label in table:
+        if italian_size <= threshold:
+            return label
+    return ceiling
+
+
+_SPELLED_OUT_SIZE_WORDS = {
+    "XXSMALL": "XXS",
+    "XSMALL": "XS",
+    "SMALL": "S",
+    "MEDIUM": "M",
+    "LARGE": "L",
+    "XLARGE": "XL",
+    "XXLARGE": "XXL",
+    "XXXLARGE": "XXXL",
+    # flannels.com uses digit-prefixed plus sizes ("2X Large", "3X Large")
+    # rather than "XXLarge"/"XXXLarge".
+    "2XLARGE": "XXL",
+    "3XLARGE": "XXXL",
+    "4XLARGE": "XXXL",
+}
+
+# Matches a bare letter-size token anywhere in a compound size string (e.g.
+# the "XS" in "8 (XS)", or the "S" in "S (46)"). Longest tokens first so
+# "XXXL" isn't cut short by an earlier partial match of "XL".
+_LETTER_SIZE_TOKEN = re.compile(r"\b(2XS|3XS|XXXL|XXL|XL|XXS|XS|[SML])\b")
+_LETTER_SIZE_ALIASES = {"2XS": "XXS", "3XS": "XXS"}
+
+# flannels.com shows footwear sizes as "UK (EU)", e.g. "7 (41)"; also used
+# as a fallback for "EU (UK N)"-style compounds like "36 (UK 10)".
+_PARENTHETICAL_NUMBER = re.compile(r"\((\d+(?:\.\d+)?)\)")
+_LEADING_NUMBER = re.compile(r"^(\d+(?:\.\d+)?)")
+# Waist size given in inches with a trailing "W" (e.g. "32W"). BUYMA's
+# reference-size dropdown only offers XS以下/S/M/L/XL以上 (no separate XXS/XXL
+# entries — see the XL/XXL/XXXL and XXS/XS collapses below), so these
+# thresholds collapse the finer _WAIST_SIZE_REFERENCE_TABLE scale to match.
+_WAIST_INCHES = re.compile(r"^(\d{2})W$")
+_WAIST_SIZE_TABLE = ((25, "XS以下"), (27, "S"), (29, "M"), (31, "L"))
+_WAIST_SIZE_CEILING = "XL以上"
 
 
 def _reference_size_label(source_size: str, category_path: list[str] | None = None) -> str:
     normalized = source_size.strip().upper()
+    # Some sites (e.g. flannels.com) spell sizes out in full ("Xsmall",
+    # "Medium") instead of using the usual XS/S/M/L abbreviations.
+    normalized = _SPELLED_OUT_SIZE_WORDS.get(normalized.replace(" ", "").replace("-", ""), normalized)
+    # A letter-size token anywhere in the string is the brand's own explicit
+    # guidance and takes priority over any numeric conversion table, since
+    # numeric tables are only an approximation (e.g. "8 (XS)" or "S (46)").
+    letter_match = _LETTER_SIZE_TOKEN.search(normalized)
+    if letter_match:
+        normalized = _LETTER_SIZE_ALIASES.get(letter_match.group(1), letter_match.group(1))
+    else:
+        waist_match = _WAIST_INCHES.match(normalized)
+        parenthetical = _PARENTHETICAL_NUMBER.search(normalized)
+        if waist_match:
+            inches = int(waist_match.group(1))
+            for threshold, label in _WAIST_SIZE_TABLE:
+                if inches <= threshold:
+                    return label
+            return _WAIST_SIZE_CEILING
+        if parenthetical:
+            normalized = parenthetical.group(1)
+        elif "(" in normalized:
+            # A compound like "36 (UK 10)" where the parenthetical isn't a
+            # bare number: fall back to the leading number outside it.
+            leading = _LEADING_NUMBER.match(normalized)
+            if leading:
+                normalized = leading.group(1)
     if normalized in {"XL", "XXL", "XXXL"}:
         return "XL以上"
     if normalized in {"XXS", "XS"}:
         return "XS以下"
+    # Source sizes are typically "IT"-prefixed (e.g. "IT38"); strip it before
+    # testing for a numeric IT/EU size so the conversion below actually runs.
+    numeric_text = normalized[2:] if normalized.startswith("IT") else normalized
+    try:
+        italian_size = float(numeric_text)
+    except ValueError:
+        return normalized
+    is_men = bool(category_path) and category_path[0] == "メンズファッション"
     category = " / ".join(category_path or [])
-    if normalized.isdigit() and not any(term in category for term in ("靴", "シューズ", "ブーツ")):
-        italian_size = int(normalized)
-        if 34 <= italian_size <= 60 and italian_size % 2 == 0:
-            # Standard womenswear IT -> JP reference (brands vary; shown as 参考 only):
-            # IT36 and below = XS, IT38 = S, IT40 = M, IT42 = L, IT44 and above = XL.
-            if italian_size <= 36:
+    if any(term in category for term in ("靴", "シューズ", "ブーツ")):
+        return _shoe_size_to_cm_label(italian_size, is_men=is_men)
+    if not italian_size.is_integer():
+        return "指定なし"
+    whole_size = int(italian_size)
+    # A bare number on a waist-sized garment (jeans/trousers/shorts) without
+    # a "W" suffix (e.g. flannels.com's plain "30", "32") is a waist size in
+    # inches, not an IT/EU dress size — those categories don't use the
+    # 34-66 IT scale at all, so route it through the same waist table.
+    if any(term in category for term in ("デニム", "ジーパン", "パンツ", "ショートパンツ")) and 22 <= whole_size <= 40:
+        for threshold, label in _WAIST_SIZE_TABLE:
+            if whole_size <= threshold:
+                return label
+        return _WAIST_SIZE_CEILING
+    if is_men:
+        # Standard menswear IT -> JP reference (brands vary; shown as 参考 only):
+        # IT44 and below = XS, IT46 = S, IT48 = M, IT50 = L, IT52 and above = XL.
+        if 40 <= whole_size <= 66 and whole_size % 2 == 0:
+            if whole_size <= 44:
                 return "XS以下"
-            if italian_size == 38:
+            if whole_size == 46:
                 return "S"
-            if italian_size == 40:
+            if whole_size == 48:
                 return "M"
-            if italian_size == 42:
+            if whole_size == 50:
                 return "L"
             return "XL以上"
-    if normalized.isdigit():
         return "指定なし"
-    return normalized
+    # Standard womenswear IT -> JP reference (brands vary; shown as 参考 only):
+    # IT38 and below = XS, IT40 = S, IT42 = M, IT44 = L, IT46 and above = XL.
+    if 34 <= whole_size <= 60 and whole_size % 2 == 0:
+        if whole_size <= 38:
+            return "XS以下"
+        if whole_size == 40:
+            return "S"
+        if whole_size == 42:
+            return "M"
+        if whole_size == 44:
+            return "L"
+        return "XL以上"
+    # Designer numeric sizing (0-4, used by e.g. Zimmermann in place of IT/EU
+    # sizes): 0 = XS, 1 = S, 2 = M, 3 = L, 4 and above = XL.
+    if 0 <= whole_size <= 4:
+        if whole_size == 0:
+            return "XS以下"
+        if whole_size == 1:
+            return "S"
+        if whole_size == 2:
+            return "M"
+        if whole_size == 3:
+            return "L"
+        return "XL以上"
+    return "指定なし"
 
 
 def _fill_purchase_and_price(page: Page, payload: dict) -> None:
@@ -446,22 +1010,8 @@ def _select_location_value(page: Page, section_title: str, value: str, *, level:
         control.select_option(value=matching_value)
     else:
         _open_react_select(page, control)
-        visible = page.get_by_text(value, exact=True)
-        for index in range(visible.count()):
-            candidate = visible.nth(index)
-            if candidate.is_visible():
-                _safe_click(page, candidate)
-                return
-        search = control.locator("input")
-        if search.count():
-            search.first.fill(value)
-            search.first.press("ArrowDown")
-            search.first.press("Enter")
-        else:
-            control.focus()
-            page.keyboard.type(value)
-            page.keyboard.press("ArrowDown")
-            page.keyboard.press("Enter")
+        option = _wait_for_react_option(page, control, value)
+        _safe_click(page, option)
         page.wait_for_timeout(500)
 
 
@@ -564,10 +1114,29 @@ def _fill_supplier_memo(page: Page, supplier: str, source_url: str) -> None:
         fields.nth(2).fill("仕入先の商品ページ")
 
 
+def _stock_table_row(section: Locator, size: str, *, size_unit: str = "") -> Locator:
+    # BUYMA concatenates the size unit directly onto the size in this
+    # table's row label with no separator (e.g. size "L" + unit "cm" renders
+    # as "Lcm", confirmed live) whenever a unit is set; the plain size is
+    # tried first since most numeric/no-unit sizes render unchanged.
+    candidates = [size]
+    if size_unit and size_unit not in ("指定なし", ""):
+        candidates.append(f"{size}{size_unit}")
+    for candidate_text in candidates:
+        label = section.get_by_text(candidate_text, exact=True)
+        for index in range(label.count()):
+            candidate = label.nth(index)
+            if candidate.is_visible():
+                return candidate.locator("xpath=ancestor::tr[1]")
+    raise BuymaDraftError(f"BUYMA stock table row did not appear for size: {size}")
+
+
 def _fill_size_inventory(
     page: Page,
     size_stocks: list[SizeStock],
     *,
+    size_variation: bool,
+    size_unit: str = "",
     purchasable_quantity: int,
     on_hand_quantity: int,
 ) -> None:
@@ -581,22 +1150,56 @@ def _fill_size_inventory(
         "[contains(., '手元に在庫あり合計数量')]"
         "[.//select or .//*[@role='combobox']][1]"
     )
-    controls = section.locator("select:visible, [role='combobox']:visible")
-    if controls.count() < len(size_stocks):
-        raise BuymaDraftError(
-            f"BUYMA showed {controls.count()} inventory rows for {len(size_stocks)} source sizes"
-        )
-    for index, item in enumerate(size_stocks):
-        _select_control_label(page, controls.nth(index), "買付可" if item.in_stock else "買付不可")
+    if size_variation:
+        # Each size has its own <tr>, holding exactly one stock dropdown;
+        # finding the row by its own size label (rather than indexing into
+        # every combobox in the section, which also picks up an unrelated
+        # "sell-stock-filter" control and made row/index alignment
+        # unreliable) guarantees the right dropdown is set for the right size.
+        for item in size_stocks:
+            row = _stock_table_row(section, item.size, size_unit=size_unit)
+            control = row.locator("select, [role='combobox']").first
+            # The real "not in stock" option is labeled "在庫なし", not
+            # "買付不可" (confirmed live; "買付不可" never appears as an
+            # option at all).
+            _select_control_label(page, control, "買付可" if item.in_stock else "在庫なし", scope=row)
+    else:
+        # No-size products (size_variation=False) get a single BUYMA-created
+        # free-size row, not one row per source "size" entry. size_stocks
+        # here can hold values with no real size meaning (e.g. sunglasses,
+        # where flannels.com reuses the size-selector DOM slot for its
+        # color-swatch codes); matching by that text against the single row
+        # would fail or, worse, coincidentally match unrelated text. The
+        # overall in-stock state is set on the one row that exists instead.
+        rows = section.locator("tr.sell-stock-table__head-row, tr.sell-stock-table__rest-row")
+        try:
+            rows.first.wait_for(state="visible", timeout=10_000)
+        except PlaywrightTimeoutError as error:
+            raise BuymaDraftError("BUYMA free-size inventory row did not appear") from error
+        row = rows.first
+        control = row.locator("select, [role='combobox']").first
+        available_now = any(item.in_stock for item in size_stocks)
+        _select_control_label(page, control, "買付可" if available_now else "在庫なし", scope=row)
 
     available = any(item.in_stock for item in size_stocks)
     purchase_total = purchasable_quantity if available else 0
     purchase_input = marker.first.locator("xpath=following::input[1]")
     if purchase_input.count() == 0:
         raise BuymaDraftError("BUYMA purchasable-quantity input did not appear")
-    purchase_input.fill(str(purchase_total))
-    if purchase_input.input_value() != str(purchase_total):
-        raise BuymaDraftError("BUYMA purchasable quantity was not accepted")
+    if purchase_input.is_disabled():
+        # BUYMA disables this field itself (and leaves it blank, not "0")
+        # once every size is marked 在庫なし, since there is nothing left to
+        # buy; confirmed live on a completely sold-out product. Trying to
+        # fill a disabled field just times out, so only proceed if there was
+        # nothing to set in the first place.
+        if purchase_total != 0:
+            raise BuymaDraftError(
+                f"BUYMA purchasable-quantity input is disabled but {purchase_total} was expected"
+            )
+    else:
+        purchase_input.fill(str(purchase_total))
+        if purchase_input.input_value() != str(purchase_total):
+            raise BuymaDraftError("BUYMA purchasable quantity was not accepted")
 
     if on_hand_quantity != 0:
         raise BuymaDraftError("Non-zero on-hand inventory is not supported by the BUYMA draft filler")
@@ -656,28 +1259,29 @@ def _try_select_shipping(
     method: str,
     buyer_shipping_jpy: int | None,
 ) -> bool:
+    # Matched against each checkbox's own (closest) row only - matching against
+    # every ancestor level (the previous approach) let a broader shared
+    # container (e.g. the whole shipping table) match for unrelated
+    # checkboxes too, since it contains every row's text, which produced
+    # multiple ambiguous "candidates" for methods like ゆうパケット and
+    # silently failed a listing that had exactly one configured method.
     checkboxes = section.locator("input[type='checkbox']")
     target: Locator | None = None
-    shortest_matching_container: int | None = None
-    method_candidates: dict[int, tuple[int, Locator, str]] = {}
+    method_candidates: list[tuple[Locator, str]] = []
     for checkbox_index in range(checkboxes.count()):
         checkbox = checkboxes.nth(checkbox_index)
-        ancestors = checkbox.locator("xpath=ancestor::*[self::tr or self::div]")
-        for ancestor_index in range(ancestors.count()):
-            text = ancestors.nth(ancestor_index).inner_text()
-            if not _shipping_method_matches(text, method):
-                continue
-            container_length = len(text)
-            previous = method_candidates.get(checkbox_index)
-            if previous is None or container_length < previous[0]:
-                method_candidates[checkbox_index] = (container_length, checkbox, text)
-            if buyer_shipping_jpy is not None and not _contains_yen_price(text, buyer_shipping_jpy):
-                continue
-            if shortest_matching_container is None or container_length < shortest_matching_container:
-                target = checkbox
-                shortest_matching_container = container_length
+        row = checkbox.locator("xpath=ancestor::*[self::tr or self::div][1]")
+        if row.count() == 0:
+            continue
+        text = row.first.inner_text()
+        if not _shipping_method_matches(text, method):
+            continue
+        method_candidates.append((checkbox, text))
+        if buyer_shipping_jpy is not None and _contains_yen_price(text, buyer_shipping_jpy):
+            target = checkbox
+            break
     if target is None and len(method_candidates) == 1:
-        _, target, displayed_text = next(iter(method_candidates.values()))
+        target, displayed_text = method_candidates[0]
         logging.warning(
             "BUYMA did not display configured shipping price ¥%s; selected the sole matching method: %s",
             buyer_shipping_jpy,

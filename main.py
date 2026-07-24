@@ -14,6 +14,8 @@ from buymafinder.services.scan_state import ScanStateRepository
 from buymafinder.shops.antonia import AntoniaAdapter
 from buymafinder.shops.base import ShopAdapter
 from buymafinder.shops.eleonora import EleonoraAdapter
+from buymafinder.shops.flannels import FlannelsAdapter
+from buymafinder.shops.thedoublef import TheDoubleFAdapter
 
 
 USER_AGENT = (
@@ -62,6 +64,14 @@ def main() -> int:
             max_links_per_source=per_source_link_cap,
         ),
         "antonia": AntoniaAdapter(
+            max_pages_per_source=args.max_pages,
+            max_links_per_source=per_source_link_cap,
+        ),
+        "flannels": FlannelsAdapter(
+            max_pages_per_source=args.max_pages,
+            max_links_per_source=per_source_link_cap,
+        ),
+        "thedoublef": TheDoubleFAdapter(
             max_pages_per_source=args.max_pages,
             max_links_per_source=per_source_link_cap,
         ),
